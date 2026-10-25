@@ -91,7 +91,11 @@ umask 077
 case "$mode" in
     file|interactive) "${cmd[@]}" ;;
     # Пароль хранилища и пароль ключа — две строки на stdin (printf — встроенная команда, в ps не видна).
-    stdin) IFS= read -r password < "$password_file"; "${cmd[@]}" < <(printf '%s\n%s\n' "$password" "$password"); unset password ;;
+    # pepk читает пароль только через System.console(): без терминала падает с NPE. `script -q /dev/null`
+    # даёт ему псевдотерминал; ввод идёт с нашего stdin, readPassword не печатает его (проверено 26.10.2026
+    # при переносе release.jks в Play App Signing).
+    stdin) IFS= read -r password < "$password_file"
+           script -q /dev/null "${cmd[@]}" < <(printf '%s\n%s\n' "$password" "$password"); unset password ;;
 esac
 ls -l "$out"
 echo "Готово. Загрузить $out в Play Console (подпись приложения), затем удалить файл."

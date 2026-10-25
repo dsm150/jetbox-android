@@ -115,7 +115,7 @@ arm64 — 41 МБ вместо 58 МБ. Стектрейсы паники Go п�
 ```
 
 * `versionCode`/`versionName` — параметрами (`-P`); `version.properties` в форке
-  — значение для сборки без параметров (сейчас `11` / `1.0.1` — бандл для Google Play, §6.1.1;
+  — значение для сборки без параметров (сейчас `12` / `1.0.2` — бандл для Google Play без «Автоматической защиты», §6.1.1;
   APK сайта и RuStore — пока 1.0 / `10`).
 * Релизная (подписанная) сборка — `./jetbox-release.sh`, §6.1.
 * После правок **ресурсов** перед `BrandingResourcesTest`/`ManifestTest` —
@@ -233,7 +233,7 @@ $A --es screen SETTINGS --ez update true        # настройки со стр
 | 2 | `settings.gradle.kts` | `include(":jetbox")` | Модуль в сборке | Обе стороны: оставить свои `include` и добавленные апстримом |
 | 3 | `build.gradle.kts` | В `plugins`: `kotlin.android`, `kotlin.compose` (`apply false`) | Kotlin и Compose в `:jetbox` (апстрим — чистая Java) | Обе стороны; если апстрим сам перейдёт на Kotlin — взять его плагин и убрать наш дубль |
 | 4 | `gradle/libs.versions.toml` | Версии `kotlin`, `composeBom`, `activityCompose`, `lifecycleCompose`, `coroutines`; библиотеки `compose-*`, `activity-compose`, `lifecycle-*-compose`, `coroutines-*`; плагины `kotlin-android`, `kotlin-compose` | Зависимости модуля `:jetbox` | Обе стороны; при совпадении имён — брать **бо́льшую** версию, затем `./gradlew :jetbox:testDebugUnitTest` (AGP/Kotlin/Compose должны быть совместимы) |
-| 5 | `version.properties` | `versionCode=11`, `versionName=1.0.1` (было `9999` / `development`; этап 1 — `1`, выпуск 1.0 — `10`) | Своя нумерация версий; реальные значения — параметрами `-P` | Оставить наше. Какой апстрим внутри — пишем в «Что нового» и в хендовер, а не в номер версии |
+| 5 | `version.properties` | `versionCode=12`, `versionName=1.0.2` (было `9999` / `development`; этап 1 — `1`, выпуск 1.0 — `10`) | Своя нумерация версий; реальные значения — параметрами `-P` | Оставить наше. Какой апстрим внутри — пишем в «Что нового» и в хендовер, а не в номер версии |
 | 6 | `build-android-lib.sh` | В `-ldflags`: (а) `socketDirectory=/data/data/net.jetnet.jetbox/cache/wireguard` (было `io.netbird.client`); (б) в начале `-s -w` (+ комментарий `# JetBox:`); (в) блок `CORE_PATCHES_DIR` / `revert_core_patches` / `apply_core_patches` перед `cd netbird` и вызов `apply_core_patches` перед `gomobile bind` | (а) Каталог сокета WireGuard ядра обязан лежать в данных **нашего** пакета, иначе туннель не поднимется. (б) Ядро без символов — `.so` на треть меньше. (в) Патчи ядра `patches/netbird-core/` (§1) накладываются на время сборки и откатываются | Взять апстрим, подставить `net.jetnet.jetbox`, вернуть `-s -w` и блок (в) (вызов — после `ensure_gomobile_tools`, до `gomobile bind`). Проверки — `BrandingResourcesTest.socketDirectoryFollowsPackage`, `releaseBuildIsSlim`, `CorePatchesTest.buildScriptAppliesAndRevertsPatches`. ⚠️ Если апстрим добавил новые `-ldflags` — взять их |
 | 27 | `jetbox-release.sh` (новый, в корне) | Скрипт релизной сборки: проверка `ANDROID_HOME`; пароль ключа из файла → переменные `NETBIRD_UPLOAD_*` → `./gradlew --no-daemon -Pkotlin.compiler.execution.strategy=in-process assembleRelease`; копия в `dist/JetBox-<versionName>-<store>-<abis>.apk` (`dist/` в `.gitignore`), затем STORE/ABI, размер, отпечаток, badging | Подписанный APK одной командой, пароль не попадает ни в git, ни в `ps`, ни в вывод, ни в живущие после сборки демоны Gradle/Kotlin (§6.1) | Конфликта быть не может (файла у апстрима нет). Номер 27 — после строки 26, чтобы ссылки на номера не съехали. Проверка — `releaseScriptAndKeyGuard` |
 | 28 | `patches/netbird-core/*.patch` (новый каталог) | Патчи ядра (§1, «Патчи ядра»): `0001-android-no-device-serial.patch` | Правки ядра без форка `netbird` | Конфликта при слиянии тега Android-клиента нет; при сдвиге пина ядра — `git -C netbird apply --check`, см. §1. Проверка — `CorePatchesTest` |
@@ -502,7 +502,7 @@ source ../jetbox-env.sh    # <папка документов>/jetbox-env.sh —
   зависят от `BuildConfig.STORE` и зелёные в каждом варианте — прогонять все три (`./gradlew test` и
   `:jetbox:testDebugUnitTest -Pjetbox.store=play|rustore`).
 
-### 6.1.1. Google Play — бандл (AAB), 1.0.1 / versionCode 11
+### 6.1.1. Google Play — бандл (AAB), 1.0.1 / versionCode 11 (далее 1.0.2 / 12)
 
 ```bash
 source ../jetbox-env.sh
@@ -585,6 +585,17 @@ BUNDLETOOL=<bundletool> ./jetbox-bundle.sh   # → dist/JetBox-1.0.1-play.aab; B
   (нужен ddmlib) — вместо него `extract-apks --device-spec` + `adb install-multiple`. Готовый
   `bundletool-all-<версия>.jar` — в релизах github.com/google/bundletool.
 
+
+**Play, 26.10.2026 (сделал координатор).** Ключ подписи в Play App Signing — наш `release.jks` (ключ, который Google
+создал при заведении приложения, заменён через «Изменить ключ» / PEPK); ключ загрузки — `upload.jks`. 1.0.1 (11) —
+во «Внутреннем тестировании». Грабли:
+* **PEPK** берёт пароль только через `System.console()` — без терминала NPE; рабочий запуск —
+  `script -q /dev/null java -jar pepk.jar …` с паролем в stdin (так в `jetbox-pepk-export.sh`, режим stdin).
+* **API на неопубликованном приложении:** `bundles.upload` + `commit` проходят, `tracks.update` — 403; первый выпуск —
+  в веб-консоли («Добавить из библиотеки»).
+* **«Автоматическая защита» (проверка установщика)** встраивает в бандл проверки Play — приложение перестаёт
+  совпадать с опубликованными исходниками. Владелец её выключил; действует только для бандлов, загруженных после
+  выключения — поэтому пересборка **1.0.2 (12)** из того же дерева (меняется только версия).
 ### 6.2. Что ещё нужно для публикации
 
 * **Релизный ключ подписи — один** на APK со своего сайта и RuStore: Android
