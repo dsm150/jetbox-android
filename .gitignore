@@ -88,5 +88,12 @@ lefthook.yml
 *.keystore
 *.local.md
 release.password
+*.password
+# JetBox: Play — бандлы и экспорт ключа подписи (pepk.jar, ключ шифрования Google, ZIP с ключом)
+*.aab
+*.apks
+pepk*.jar
+encryption_public_key.pem
+jetbox-signing-key.zip
 # JetBox: копии релизных APK от ./jetbox-release.sh
 dist/

@@ -12,10 +12,14 @@ android {
         consumerProguardFiles("consumer-rules.pro")
         buildConfigField("String", "APP_VERSION_NAME", "\"${rootProject.extra["appVersionName"]}\"")
         buildConfigField("int", "APP_VERSION_CODE", "${rootProject.extra["appVersionCode"]}")
-        // Куда идёт сборка: apk — файл с сайта (своя проверка обновлений), rustore — магазин (обновляет он).
+        // Куда идёт сборка: apk — файл с сайта (своя проверка обновлений); rustore и play — магазины
+        // (обновляет магазин). Адрес version.json есть только в сборке apk: в магазинных сборках нет ни
+        // проверки, ни самого адреса — политика Play запрещает обновляться мимо магазина (JETBOX-BUILD.md §6.1).
         val store = (project.findProperty("jetbox.store") as String?) ?: "apk"
-        require(store == "apk" || store == "rustore") { "-Pjetbox.store=apk|rustore, а не $store" }
+        require(store in listOf("apk", "rustore", "play")) { "-Pjetbox.store=apk|rustore|play, а не $store" }
         buildConfigField("String", "STORE", "\"$store\"")
+        val updateUrl = if (store == "apk") "https://box.jet-net.net/android/version.json" else ""
+        buildConfigField("String", "UPDATE_URL", "\"$updateUrl\"")
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

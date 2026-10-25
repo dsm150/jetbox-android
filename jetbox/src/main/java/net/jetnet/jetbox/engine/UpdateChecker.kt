@@ -72,8 +72,28 @@ class HttpUpdateSource(private val url: URL, private val userAgent: String) : Up
 }
 
 /**
- * Проверка обновлений для сборки «файл с сайта» (`BuildConfig.STORE == "apk"`); в сборке для магазина
- * ([enabled] = false) ничего не спрашивает и ничего не показывает — обновляет магазин.
+ * Проверка обновлений для сборки с адресом `version.json` [updateUrl] (`BuildConfig.UPDATE_URL`):
+ * пустой адрес — магазинные сборки (`STORE` = `rustore`/`play`, JETBOX-BUILD.md §6.1) — проверка
+ * выключена и в сеть не ходит; иначе — [sourceFor] по этому адресу ([HttpUpdateSource]).
+ */
+fun updateCheckerFor(
+    updateUrl: String,
+    kv: KeyValueStore,
+    currentCode: Int,
+    userAgent: String,
+    io: CoroutineContext = Dispatchers.IO,
+    sourceFor: (URL) -> UpdateSource = { HttpUpdateSource(it, userAgent) },
+): UpdateChecker = UpdateChecker(
+    source = if (updateUrl.isEmpty()) UpdateSource { null } else sourceFor(URL(updateUrl)),
+    kv = kv,
+    currentCode = currentCode,
+    enabled = updateUrl.isNotEmpty(),
+    io = io,
+)
+
+/**
+ * Проверка обновлений для сборки «файл с сайта» (`BuildConfig.STORE == "apk"`, адрес — `BuildConfig.UPDATE_URL`);
+ * в сборке для магазина ([enabled] = false) ничего не спрашивает и ничего не показывает — обновляет магазин.
  *
  * Сама по себе — не чаще раза в сутки (метка последней попытки в настройках JetBox, удачной или нет:
  * пока файла на сайте нет, приложение не стучится туда при каждом открытии). По просьбе экрана
@@ -137,7 +157,6 @@ class UpdateChecker(
     private fun saved(): UpdateInfo? = kv.getString(K_INFO)?.let { UpdateInfo.parse(it) }
 
     companion object {
-        const val VERSION_URL = "https://box.jet-net.net/android/version.json"
         const val INTERVAL_MS = 24 * 60 * 60 * 1000L
         /** Принудительная проверка (открыли настройки) — не чаще раза в минуту. */
         const val FORCE_INTERVAL_MS = 60 * 1000L

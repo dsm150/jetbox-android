@@ -65,10 +65,20 @@ android {
         }
     }
 
-    // JetBox: .so ядра в APK сжаты (extractNativeLibs) — APK вдвое меньше.
+    // JetBox: .so ядра в APK сжаты (extractNativeLibs) — APK вдвое меньше. Бандл для Google Play
+    // (jetbox-bundle.sh) передаёт -Pjetbox.legacyPackaging=false: Play сам отдаёт устройству одну ABI,
+    // а несжатые .so не распаковываются на телефоне второй копией (замер — JETBOX-BUILD.md §6.1).
     packaging {
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = (project.findProperty("jetbox.legacyPackaging") as String?)?.toBooleanStrict() ?: true
+        }
+    }
+
+    // JetBox: бандл без разбиения по языкам — язык меняется и внутри приложения (AppCompat на
+    // Android < 13), а сплита с нужными строками на телефоне могло бы не оказаться.
+    bundle {
+        language {
+            enableSplit = false
         }
     }
 
@@ -89,7 +99,7 @@ gradle.taskGraph.whenReady {
     val releasePackaging = setOf("packageRelease", "packageReleaseBundle", "signReleaseBundle")
     val needsKey = allTasks.any { it.path.startsWith(":app:") && it.name in releasePackaging }
     if (needsKey && getPropertyOrEnv("NETBIRD_UPLOAD_STORE_FILE") == null) {
-        throw GradleException("ключ подписи не задан — используйте ./jetbox-release.sh")
+        throw GradleException("ключ подписи не задан — используйте ./jetbox-release.sh (APK) или ./jetbox-bundle.sh (бандл Google Play)")
     }
 }
 
