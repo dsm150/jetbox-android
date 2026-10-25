@@ -93,9 +93,9 @@ public class TroubleshootFragment extends Fragment implements AnonymizeLevelShee
 
         initializeRemoteJobsSwitch(inflater.getContext());
 
-        binding.buttonDebugBundle.setOnClickListener(v -> {
-            generateDebugBundle();
-        });
+        // JetBox: загрузка отладочного пакета уходит на upload.debug.netbird.io (NetBird GmbH) —
+        // кнопку прячем, остаётся только «сохранить в файл» (buttonDebugBundleFile).
+        binding.buttonDebugBundle.setVisibility(View.GONE);
 
         binding.buttonDebugBundleFile.setOnClickListener(v -> {
             generateDebugBundleFile();
@@ -156,6 +156,10 @@ public class TroubleshootFragment extends Fragment implements AnonymizeLevelShee
     }
 
     private void initializeRemoteJobsSwitch(Context context) {
+        // JetBox: удалённые отладочные пакеты ядро грузит на upload.debug.netbird.io —
+        // переключатель скрыт, по умолчанию выключено.
+        binding.allowRemoteJobsLayout.setVisibility(View.GONE);
+        if (binding.allowRemoteJobsLayout.getVisibility() == View.GONE) return;
         try {
             String configFilePath = new ProfileManagerWrapper(context).getActiveConfigPath();
             io.netbird.gomobile.android.Preferences goPreferences =

@@ -161,6 +161,42 @@ ensure_ndk() {
   fi
 }
 
+# JetBox: patches to the core (JETBOX-BUILD.md §1, "Патчи ядра"). Every
+# patches/netbird-core/*.patch is applied to the submodule with `git apply`
+# right before `gomobile bind` and reverted on any exit (success, error,
+# Ctrl-C), so the submodule stays clean at its pin. The submodule must be clean
+# before the build: a leftover change would be reverted or block a patch.
+readonly CORE_PATCHES_DIR="$app_path/patches/netbird-core"
+applied_core_patches=()
+
+revert_core_patches() {
+  local i
+  for (( i=${#applied_core_patches[@]}-1; i>=0; i-- )); do
+    if ! git -C "$app_path/netbird" apply -R "${applied_core_patches[$i]}"; then
+      echo "WARNING: failed to revert ${applied_core_patches[$i]}; check git -C netbird status" >&2
+    fi
+  done
+  applied_core_patches=()
+}
+
+apply_core_patches() {
+  if ! git -C "$app_path/netbird" diff --quiet; then
+    echo "The netbird submodule has local changes; clean it before building:" >&2
+    git -C "$app_path/netbird" status --short >&2
+    exit 1
+  fi
+  trap revert_core_patches EXIT
+  trap 'exit 130' INT TERM
+  local patch
+  shopt -s nullglob
+  for patch in "$CORE_PATCHES_DIR"/*.patch; do
+    echo "Applying core patch: ${patch#"$app_path"/}"
+    git -C "$app_path/netbird" apply "$patch"
+    applied_core_patches+=("$patch")
+  done
+  shopt -u nullglob
+}
+
 cd netbird
 
 # Get version using the function
@@ -169,14 +205,16 @@ echo "Using version: $version"
 
 ensure_ndk
 ensure_gomobile_tools
+apply_core_patches
 
 # -androidapi must match minSdkVersion in build.gradle.kts. Without it gomobile
 # defaults to API 16, which only NDK r23 and older still accept.
+# JetBox: "-s -w" — без таблицы символов и DWARF: .so ядра на треть меньше (JETBOX-BUILD.md §4, стр. 6).
 CGO_ENABLED=0 gomobile bind \
   -androidapi 26 \
   -o "$app_path/gomobile/netbird.aar" \
   -javapkg=io.netbird.gomobile \
-  -ldflags="-linkmode=external -extldflags=-Wl,-z,max-page-size=16384 -checklinkname=0 -X golang.zx2c4.com/wireguard/ipc.socketDirectory=/data/data/io.netbird.client/cache/wireguard -X github.com/netbirdio/netbird/version.version=$version" \
+  -ldflags="-s -w -linkmode=external -extldflags=-Wl,-z,max-page-size=16384 -checklinkname=0 -X golang.zx2c4.com/wireguard/ipc.socketDirectory=/data/data/net.jetnet.jetbox/cache/wireguard -X github.com/netbirdio/netbird/version.version=$version" \
   "$(pwd)/client/android"
 
 cd - > /dev/null

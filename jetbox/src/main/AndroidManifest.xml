@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Разовые настройки при старте процесса — до окна: туннель могут включить плиткой раньше. -->
+        <provider
+            android:name="net.jetnet.jetbox.JetBoxInitProvider"
+            android:authorities="${applicationId}.jetbox-init"
+            android:exported="false"
+            android:initOrder="100" />
+
+        <!--
+            Ярлык на рабочем столе — трамплин без своего содержимого: задачи нет — открывает
+            JetBoxActivity, есть — поднимает её как есть, с экранами NetBird расширенного режима поверх.
+            Тема — JetBox, а не NoDisplay: у прозрачной активности система не показывает заставку,
+            и холодный старт выглядел бы как «нажал — ничего не происходит».
+            ТВ на этапе 1 не поддерживается: LEANBACK_LAUNCHER не объявлен (ни здесь, ни в :app).
+        -->
+        <activity
+            android:name="net.jetnet.jetbox.LauncherActivity"
+            android:exported="true"
+            android:theme="@style/Theme.JetBox">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            Стартовый экран JetBox и приёмник ссылок из Кабинета. singleTask: ссылка при открытом
+            приложении приходит в onNewIntent, а экраны NetBird (MainActivity), открытые поверх, закрываются.
+            Только портрет — как iOS.
+        -->
+        <activity
+            android:name="net.jetnet.jetbox.JetBoxActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.JetBox">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="box.jet-net.net" android:path="/connect" />
+                <data android:scheme="https" android:host="box.jet-net.net" android:pathPrefix="/connect/" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="jetbox" android:host="connect" />
+            </intent-filter>
+        </activity>
+        <!--
+            Виджет на рабочем столе — NetBirdWidget iOS. Обновления шлёт система (exported), рисует
+            AndroidEngine при смене состояния туннеля. Подпись в списке виджетов — «JetBox»
+            (configurationDisplayName iOS), описание — в jb_widget_info.
+        -->
+        <receiver
+            android:name="net.jetnet.jetbox.widget.JetBoxWidget"
+            android:exported="true"
+            android:label="@string/jb_widget_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/jb_widget_info" />
+        </receiver>
+
+        <!-- Касание виджета: только наш PendingIntent, снаружи не вызвать. -->
+        <receiver
+            android:name="net.jetnet.jetbox.widget.WidgetToggleReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

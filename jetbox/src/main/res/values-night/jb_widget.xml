@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="jb_widget_surface">#101D2C</color>
+    <color name="jb_widget_text">#DCE8F3</color>
+    <color name="jb_widget_title">#DCE8F3</color>
+    <color name="jb_widget_green">#30D158</color>
+    <color name="jb_widget_gray">#48484A</color>
+</resources>

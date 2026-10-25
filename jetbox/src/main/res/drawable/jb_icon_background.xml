@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Фон адаптивной иконки: вертикальный градиент, как заливка AppIcon.icon iOS (icon.json, light/dark). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:startColor="@color/jb_icon_bg_top"
+        android:endColor="@color/jb_icon_bg_bottom"
+        android:type="linear" />
+</shape>

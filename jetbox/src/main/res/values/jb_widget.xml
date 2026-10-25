@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Виджет на рабочем столе — цвета NetBirdWidgetExtension iOS (WidgetVPNStatus.statusColor, pillLabel):
+    точка «Подключено» — системный зелёный, переход — jetboxBlue #1288E1, «Отключено» и капсула «выкл» —
+    systemGray3. Фон — поверхность JetBox (Surface), текст — TextPrimary, «JetBox» — Ink.
+-->
+<resources>
+    <!-- Имя виджета и подпись в нём — бренд, не переводится (configurationDisplayName iOS). -->
+    <string name="jb_widget_title" translatable="false">JetBox</string>
+    <color name="jb_widget_surface">#FFFFFF</color>
+    <color name="jb_widget_text">#16283A</color>
+    <color name="jb_widget_title">#273D58</color>
+    <color name="jb_widget_green">#34C759</color>
+    <color name="jb_widget_blue">#1288E1</color>
+    <color name="jb_widget_gray">#C7C7CC</color>
+    <dimen name="jb_widget_radius">16dp</dimen>
+</resources>

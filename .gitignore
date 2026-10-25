@@ -82,3 +82,11 @@ app/src/main/res/drawable-*/src_*
 app/src/main/res/drawable-*/node_modules_*
 google-services.json
 lefthook.yml
+
+# JetBox: ключи подписи и локальные заметки не коммитим
+*.jks
+*.keystore
+*.local.md
+release.password
+# JetBox: копии релизных APK от ./jetbox-release.sh
+dist/

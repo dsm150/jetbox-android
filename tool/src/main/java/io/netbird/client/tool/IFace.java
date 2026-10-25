@@ -70,6 +70,7 @@ class IFace implements TunAdapter {
         }
         builder.allowFamily(OsConstants.AF_INET);
         builder.allowFamily(OsConstants.AF_INET6);
+        builder.setSession("JetBox"); // JetBox: имя VPN в системе
         builder.setMtu(mtu);
         prepareDnsSetting(builder, dns);
         for (String sd : searchDomains) {

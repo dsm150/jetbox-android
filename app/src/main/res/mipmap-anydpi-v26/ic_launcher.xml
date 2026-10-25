@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- JetBox: слои — jetbox/src/main/res/drawable/jb_icon_*.xml -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background"/>
-    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+    <background android:drawable="@drawable/jb_icon_background"/>
+    <foreground android:drawable="@drawable/jb_icon_foreground"/>
+    <monochrome android:drawable="@drawable/jb_icon_monochrome"/>
 </adaptive-icon>

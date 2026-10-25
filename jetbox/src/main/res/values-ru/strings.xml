@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Тексты дословно из iOS (Localizable.xcstrings). Имя ресурса: jb_ + snake_case имени JBText.
+     Сгенерировано разово; правки — вручную, с сохранением соответствия iOS. -->
+<resources>
+    <string name="jb_cancel">Отмена</string>
+    <string name="jb_done">Готово</string>
+    <string name="jb_close">Закрыть</string>
+    <string name="jb_back">Назад</string>
+    <string name="jb_retry">Попробовать снова</string>
+    <string name="jb_ready_caption">Ваш JetBox</string>
+    <string name="jb_ready_hint">Одно нажатие — и телефон окажется в вашей домашней сети.</string>
+    <string name="jb_ready_key_label">Ключ</string>
+    <string name="jb_ready_button">Подключить</string>
+    <string name="jb_privacy_notice">Приложение передаёт на сервер JetNet только служебные данные подключения: имя устройства, версию приложения и сетевые адреса — они нужны, чтобы ваша сеть узнала это устройство. Содержимое трафика не собирается и не хранится. Данные не передаются третьим лицам.</string>
+    <string name="jb_privacy_more">Подробнее</string>
+    <string name="jb_switch_title">Другой JetBox</string>
+    <string name="jb_switch_message">Сейчас телефон привязан к «%1$s», а ссылка ведёт на «%2$s». Переключить? Текущее подключение будет сброшено.</string>
+    <string name="jb_switch_confirm">Переключить</string>
+    <string name="jb_registering">Регистрируем устройство…</string>
+    <string name="jb_connecting">Подключаем…</string>
+    <string name="jb_selecting_exit">Настраиваем выход в интернет…</string>
+    <string name="jb_protected_title">Вы под защитой JetBox</string>
+    <string name="jb_protected_exit">Интернет идёт через «%1$s»</string>
+    <string name="jb_protected_no_exit">Защищённая сеть подключена. Интернет идёт как обычно, через вашего провайдера.</string>
+    <string name="jb_exit_picker_title">Выберите выход</string>
+    <string name="jb_exit_picker_message">Через какой JetBox выпускать интернет с этого телефона?</string>
+    <string name="jb_exit_picker_skip">Пока не выбирать</string>
+    <string name="jb_exit_picker_empty">Ни одного выхода не найдено. Возможно, объект выключен — свяжитесь с поддержкой.</string>
+    <string name="jb_err_broken_title">Ссылка повреждена</string>
+    <string name="jb_err_broken_body">Эта ссылка не подходит для подключения. Запросите новую ссылку у поддержки JetBox.</string>
+    <string name="jb_err_offline_title">Нет интернета</string>
+    <string name="jb_err_offline_body">Подключитесь к Wi-Fi или мобильной сети и попробуйте снова.</string>
+    <string name="jb_err_unreachable_title">JetBox не отвечает</string>
+    <string name="jb_err_unreachable_body">Не удаётся связаться с сервером JetBox. Проверьте интернет; если не помогло — свяжитесь с поддержкой.</string>
+    <string name="jb_err_key_title">Ссылка больше не действует</string>
+    <string name="jb_err_key_body">Ключ из ссылки отклонён: он мог быть уже использован или просрочен. Запросите новую ссылку подключения.</string>
+    <string name="jb_err_tunnel_title">Не удалось включить защиту</string>
+    <!-- Отказ в системном диалоге VPN (текст iOS tunnelFailed). -->
+    <string name="jb_err_tunnel_body">Разрешите JetBox настроить VPN — без этого защита не включится. Если разрешение уже дано, попробуйте ещё раз.</string>
+    <!-- Android: туннель не поднялся за 45 с или сервис не запустился — согласие тут ни при чём. -->
+    <string name="jb_err_tunnel_timeout_body">Не удалось установить соединение с JetBox. Проверьте интернет и попробуйте снова.</string>
+    <string name="jb_err_generic_title">Что-то пошло не так</string>
+    <string name="jb_err_generic_body">Попробуйте ещё раз. Если повторяется — покажите подробности поддержке JetBox.</string>
+    <string name="jb_err_details">Подробности</string>
+    <string name="jb_state_expanded">Развёрнуто</string>
+    <string name="jb_state_collapsed">Свёрнуто</string>
+    <string name="jb_home_connected">Под защитой</string>
+    <string name="jb_home_connecting">Подключаем…</string>
+    <string name="jb_home_disconnecting">Отключаем…</string>
+    <string name="jb_home_disconnected">Защита выключена</string>
+    <string name="jb_home_offline">Нет интернета</string>
+    <string name="jb_home_connect">Включить защиту</string>
+    <string name="jb_home_disconnect">Выключить</string>
+    <string name="jb_home_no_box_title">JetBox не подключён</string>
+    <string name="jb_home_no_box_body">Откройте ссылку из письма JetBox — телефон настроится сам.</string>
+    <string name="jb_home_exit">Выход: %1$s</string>
+    <string name="jb_home_exit_none">Выход не выбран</string>
+    <string name="jb_home_change_exit">Сменить</string>
+    <string name="jb_settings_title">Настройки</string>
+    <string name="jb_settings_section_box">JetBox</string>
+    <string name="jb_settings_box_name">Имя</string>
+    <string name="jb_settings_exit">Выход</string>
+    <string name="jb_settings_no_box">JetBox ещё не подключён</string>
+    <string name="jb_settings_section_app">Приложение</string>
+    <string name="jb_settings_version">Версия</string>
+    <string name="jb_update_available">Доступна новая версия %1$s</string>
+    <string name="jb_update_install">Обновить до %1$s</string>
+    <string name="jb_settings_advanced">Расширенные настройки</string>
+    <string name="jb_settings_advanced_footer">Служебные экраны NetBird: пиры, ресурсы, отладка и смена сервера. Для обычной работы не нужны.</string>
+    <string name="jb_settings_advanced_unlocked">Расширенные настройки открыты</string>
+    <string name="jb_settings_advanced_already">Расширенные настройки уже открыты</string>
+    <string name="jb_settings_advanced_off">Выключить расширенные настройки</string>
+    <string name="jb_settings_advanced_off_footer">Служебные экраны закроются. Чтобы открыть их снова, семь раз нажмите на строку версии в настройках JetBox.</string>
+    <plurals name="jb_settings_advanced_hint">
+        <item quantity="one">Ещё %1$d нажатие…</item>
+        <item quantity="few">Ещё %1$d нажатия…</item>
+        <item quantity="many">Ещё %1$d нажатий…</item>
+        <item quantity="other">Ещё %1$d нажатия…</item>
+    </plurals>
+    <string name="jb_about_title">О программе</string>
+    <string name="jb_about_body">JetBox — приложение для вашего JetBox. Основано на открытом клиенте NetBird (лицензия GPL-3.0).</string>
+    <string name="jb_about_site">jet-net.net</string>
+    <string name="jb_about_source">Исходный код</string>
+    <string name="jb_about_legal">© %1$s JetNet. Основано на клиенте NetBird © NetBird. Распространяется по лицензии GNU GPL v3 без каких-либо гарантий.</string>
+    <string name="jb_about_license">Лицензия GPL-3.0</string>
+    <string name="jb_dock_on">Вы дома · защищено</string>
+    <string name="jb_dock_connecting">Подключаемся к дому…</string>
+    <string name="jb_dock_off">Не подключено</string>
+    <string name="jb_dock_offline">Нет интернета</string>
+    <string name="jb_dock_uptime">в сети</string>
+    <string name="jb_dock_latency">до дома</string>
+    <string name="jb_dock_route">соединение</string>
+    <string name="jb_dock_direct">Напрямую</string>
+    <string name="jb_dock_relayed">Ретранслятор</string>
+    <string name="jb_milliseconds">%1$s мс</string>
+    <string name="jb_details_uptime">В сети</string>
+    <string name="jb_details_latency">До дома</string>
+    <string name="jb_details_route">Соединение</string>
+    <string name="jb_details_relayed">Через ретранслятор</string>
+    <string name="jb_details_traffic">Получено / отправлено</string>
+
+    <!-- Android-специфичные -->
+    <!-- «О программе»: ссылка на политику (в iOS она только под кнопкой «Подключить»). -->
+    <string name="jb_about_privacy">Политика конфиденциальности</string>
+    <string name="jb_err_vpn_permission_title">Не удалось включить защиту</string>
+    <string name="jb_widget_description">Подключение и отключение JetBox одним касанием.</string>
+    <string name="jb_widget_state_connected">Подключено</string>
+    <string name="jb_widget_state_connecting">Подключаем…</string>
+    <string name="jb_widget_state_disconnecting">Отключаем…</string>
+    <string name="jb_widget_state_disconnected">Отключено</string>
+    <string name="jb_widget_action_connect">Подключить JetBox</string>
+    <string name="jb_widget_action_disconnect">Отключить JetBox</string>
+    <string name="jb_notification_login_required_title">JetBox отключён</string>
+    <string name="jb_notification_login_required_body">Связь с домом прервана. Откройте ссылку подключения ещё раз.</string>
+</resources>

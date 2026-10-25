@@ -323,6 +323,11 @@ public class VPNService extends android.net.VpnService {
             return engineRunner.isRunning();
         }
 
+        // JetBox: момент первого подключения текущего запуска ядра (мс эпохи), 0 — нет.
+        public long connectedAtMillis() {
+            return engineRunner.connectedAtMillis();
+        }
+
         // Called on every activity bind. The notification may only be
         // re-posted while the service is already in the foreground: with the
         // engine stopped the service is not foreground, and a startForeground
@@ -348,6 +353,18 @@ public class VPNService extends android.net.VpnService {
 
         public void removeConnectionStateListener() {
             engineRunner.removeStatusListener();
+        }
+
+        // JetBox: наблюдатель за фазой туннеля, переживающий смену/снятие основного слушателя
+        // (MainActivity.onStop зовёт removeConnectionStateListener). Тонкая обёртка над
+        // EngineRunner.addConnectionObserver.
+        public void addConnectionObserver(ConnectionListener observer) {
+            engineRunner.addConnectionObserver(observer);
+        }
+
+        // JetBox: парный метод к addConnectionObserver.
+        public void removeConnectionObserver(ConnectionListener observer) {
+            engineRunner.removeConnectionObserver(observer);
         }
 
         public void addServiceStateListener(ServiceStateListener serviceStateListener) {

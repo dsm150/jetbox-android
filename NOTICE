@@ -1,0 +1,167 @@
+JetBox для Android / JetBox for Android
+Copyright (c) 2026 JetNet
+
+Это форк открытого клиента NetBird для Android.
+This is a fork of the open-source NetBird Android client.
+
+Основано на клиенте NetBird (c) NetBird GmbH.
+Based on the NetBird client (c) NetBird GmbH.
+
+Изменено JetNet, октябрь 2026 (GPL-3.0, п. 5a): перечень изменений — ниже.
+Modified by JetNet, October 2026 (GPL-3.0, section 5a): see the list below.
+
+------------------------------------------------------------------------------
+Апстрим / Upstream
+------------------------------------------------------------------------------
+
+  https://github.com/netbirdio/android-client
+  Точка форка / fork point: тег / tag v0.6.2 (commit ad7865a)
+  Лицензия / license: GNU General Public License v3.0 (см. LICENSE)
+
+Файл LICENSE — лицензия апстрима, она не изменялась.
+The LICENSE file is the upstream license and has not been modified.
+
+Исходный код этой сборки / source code of this build:
+
+  https://github.com/dsm150/jetbox-android
+
+------------------------------------------------------------------------------
+Ядро агента / Agent core
+------------------------------------------------------------------------------
+
+Ядро агента (Go) не копируется в этот репозиторий: оно подключено
+подмодулем `netbird` на https://github.com/netbirdio/netbird. Клиентская
+часть ядра — лицензия BSD-3-Clause. Серверные каталоги ядра — AGPL-3.0
+(перечень — в файле LICENSE ядра); клиентом они не используются и в
+приложение не входят.
+The Go agent core is not vendored here: it is a submodule pointing at
+https://github.com/netbirdio/netbird. The client part of the core is
+licensed under BSD-3-Clause. The server directories of the core are
+AGPL-3.0 (listed in the core's LICENSE file); the client does not use them
+and they are not part of the app.
+
+Ядро собирается с патчами JetNet из каталога `patches/netbird-core/`
+(накладываются на время сборки скриптом `build-android-lib.sh`):
+  * 0001-android-no-device-serial — ядро не читает и не отправляет серверу
+    управления серийный номер устройства и ANDROID_ID.
+The core is built with JetNet patches from `patches/netbird-core/` (applied
+for the duration of the build by `build-android-lib.sh`):
+  * 0001-android-no-device-serial — the core neither reads nor sends the
+    device serial number or ANDROID_ID to the management server.
+
+------------------------------------------------------------------------------
+Что изменено в форке / What was changed
+------------------------------------------------------------------------------
+
+  * Новый модуль `jetbox/` (Kotlin + Jetpack Compose): все экраны и логика
+    JetBox — главный экран с одним переключателем, лист подробностей,
+    настройки, «О программе», виджет на рабочем столе. Апстримовые Java-
+    модули `app/` и `tool/` правятся только точечно; перечень правок — в
+    JETBOX-BUILD.md, раздел 4.
+    New module `jetbox/` (Kotlin + Jetpack Compose): all JetBox screens and
+    logic — a main screen with a single switch, a details sheet, settings,
+    "About", a home-screen widget. The upstream Java modules `app/` and
+    `tool/` are changed only in small patches; the list is in JETBOX-BUILD.md,
+    section 4.
+
+  * Свой пакет `net.jetnet.jetbox`, имя JetBox в системе (приложение, плитка
+    быстрых настроек, имя VPN-соединения, уведомления); разрешение
+    рекламного идентификатора (AD_ID) удалено.
+    Own application id `net.jetnet.jetbox`, the JetBox name in the system
+    (app, quick settings tile, VPN connection name, notifications); the
+    advertising ID (AD_ID) permission removed.
+
+  * Бренд JetBox: иконка, палитра, логотип, значки уведомлений; знаки и
+    оранжевая палитра NetBird из ресурсов убраны.
+    JetBox branding: icon, palette, logo, notification icons; NetBird marks
+    and the orange palette removed from resources.
+
+  * Русская локализация интерфейса (ru + en).
+    Russian localization of the interface (ru + en).
+
+  * Ссылка подключения: приложение принимает ссылку от личного кабинета
+    (универсальная ссылка `/connect` и схема `jetbox://`) и разбирает её
+    параметры вместо ручного ввода setup-ключа и адреса управления.
+    Connection link: the app accepts a link from the customer portal
+    (universal link `/connect` and the `jetbox://` scheme) and parses its
+    parameters instead of typing a setup key and management URL by hand.
+
+  * Режим одной кнопки: один экран подключения и один переключатель вместо
+    списка пиров, маршрутов и серверов; сервер управления JetNet — по
+    умолчанию.
+    Single-button mode: one connection screen and one switch instead of the
+    peers, routes and servers UI; the JetNet management server is the default.
+
+  * Прямое соединение по умолчанию: принудительный ретранслятор (relay)
+    выключен.
+    Direct connection by default: forced relay is turned off.
+
+  * Скрытый расширенный режим: исходные экраны апстрима остаются в сборке и
+    открываются из настроек.
+    Hidden advanced mode: the original upstream screens remain in the build
+    and are opened from settings.
+
+  * Проверка обновлений (только сборка «файл с сайта»): раз в сутки и при
+    открытии настроек — запрос `https://box.jet-net.net/android/version.json`
+    (в запросе — только версия приложения); при новой версии приложение
+    предлагает скачать её в браузере. В сборке для магазина выключена.
+    Update check (website APK build only): once a day and when settings are
+    opened, a request to `https://box.jet-net.net/android/version.json`
+    (only the app version is sent); if a newer version exists, the app offers
+    to download it in the browser. Disabled in store builds.
+
+  * Отладочный пакет из расширенного режима не загружается на серверы
+    NetBird GmbH: кнопка загрузки скрыта, остаётся сохранение в файл.
+    Объявление разрешения `io.netbird.permission.NOTIFICATION` снято (не
+    использовалось и мешало установке рядом с официальным NetBird);
+    разрешение камеры, вносимое библиотекой QR, снято.
+    The debug bundle from advanced mode is not uploaded to NetBird GmbH
+    servers: the upload button is hidden, saving to a file remains. The
+    `io.netbird.permission.NOTIFICATION` declaration is removed (unused, and
+    it blocked installing next to the official NetBird app); the camera
+    permission brought in by the QR library is removed.
+
+  * Сборка: свой каталог сокета WireGuard в данных приложения; параметры
+    релизной сборки и подписи — в JETBOX-BUILD.md.
+    Build: its own WireGuard socket directory in the app data; release build
+    and signing parameters are described in JETBOX-BUILD.md.
+
+Полный перечень изменений — история git (`git log v0.6.2..`).
+The complete list of changes is the git history (`git log v0.6.2..`).
+
+------------------------------------------------------------------------------
+Сторонние компоненты / Third-party components
+------------------------------------------------------------------------------
+
+Входят в APK; версии — по `netbird/go.mod` и `gradle/libs.versions.toml`
+на момент сборки 1.0. Тексты лицензий — у самих проектов.
+Included in the APK; versions as in `netbird/go.mod` and
+`gradle/libs.versions.toml` at the 1.0 build. License texts are with each
+project.
+
+  Ядро (Go) / core (Go):
+  * wireguard-go (форк / fork github.com/netbirdio/wireguard-go
+    v0.0.0-20261008122457-d2b1ce9bfee9) — MIT
+  * gVisor (gvisor.dev/gvisor v0.0.0-20260219192049-0f2374377e89) — Apache-2.0
+  * pion (ice — форк / fork github.com/netbirdio/ice/v4, stun, turn, dtls,
+    transport, logging, randutil) — MIT
+  * golang.org/x/mobile (gomobile) — BSD-3-Clause
+
+  Приложение / app:
+  * zxing-android-embedded 4.3.0 (com.journeyapps) и / and ZXing core 3.4.1
+    — Apache-2.0
+  * xterm.js (терминал SSH расширенного режима / SSH terminal in advanced
+    mode, `app/src/main/assets/terminal/`) — MIT
+  * AndroidX, Jetpack Compose (BOM 2026.06.01), Material Components for
+    Android 1.12.0 — Apache-2.0
+  * Kotlin 2.3.21 (стандартная библиотека / standard library) и / and
+    kotlinx.coroutines 1.10.2 — Apache-2.0
+
+------------------------------------------------------------------------------
+Контакт / Contact
+------------------------------------------------------------------------------
+
+  info@jet-net.net
+
+Проект не связан с NetBird GmbH и не поддерживается ею.
+This project is not affiliated with or endorsed by NetBird GmbH.

@@ -39,6 +39,9 @@ class EngineRunner {
     private final Client goClient;
     private ConnectionListener connectionListener;
     private volatile boolean restartPending;
+    // JetBox: момент первого onConnected в текущем запуске ядра (мс эпохи), 0 — ещё не было.
+    // Смена сети (CONNECTING посреди работы) его не трогает; сбрасывается при старте и конце запуска.
+    private volatile long connectedAtMillis;
 
     public EngineRunner(Context context, NetworkChangeListener networkChangeListener, TunAdapter tunAdapter,
                         IFaceDiscover iFaceDiscover, String versionName, boolean isTraceLogEnabled, boolean isDebuggable,
@@ -61,6 +64,11 @@ class EngineRunner {
         goClient.setMDMPolicyFetcher(MDMBridge.fetcher(context));
 
         updateLogLevel(isTraceLogEnabled, isDebuggable);
+
+        // JetBox: «в сети» — от первого подключения запуска ядра, а не от процесса приложения.
+        connectedObservers.add(() -> {
+            if (connectedAtMillis == 0) connectedAtMillis = System.currentTimeMillis();
+        });
 
         // The Go-side subscription is client-scoped and survives engine
         // restarts, so one registration at construction time is enough. The
@@ -145,6 +153,7 @@ class EngineRunner {
         updateLogLevel(preferences.isTraceLogEnabled(), isDebuggable);
 
         engineIsRunning = true;
+        connectedAtMillis = 0; // JetBox: новый запуск ядра
         Runnable r = () -> {
             DNSWatch dnsWatch = new DNSWatch(context);
 
@@ -168,6 +177,7 @@ class EngineRunner {
                 Log.e(LOGTAG, "Failed to get profile paths from ProfileManager", e);
                 notifyError(new Exception("Failed to get profile paths: " + e.getMessage(), e));
                 engineIsRunning = false;
+                connectedAtMillis = 0; // JetBox
                 notifyServiceStateListeners(false);
                 return;
             }
@@ -190,6 +200,7 @@ class EngineRunner {
                 notifyError(e);
             } finally {
                 engineIsRunning = false;
+                connectedAtMillis = 0; // JetBox: запуск ядра закончен
                 dnsWatch.removeDNSChangeListener();
             }
             Log.e(LOGTAG, "service stopped");
@@ -234,6 +245,12 @@ class EngineRunner {
         return engineIsRunning;
     }
 
+    // JetBox: момент первого подключения текущего запуска ядра (мс эпохи), 0 — не подключалось
+    // или ядро остановлено. Без замка: читается из колбэков ядра.
+    public long connectedAtMillis() {
+        return connectedAtMillis;
+    }
+
     public synchronized void setConnectionListener(ConnectionListener listener) {
         // Unwrap first: a null listener still gets wrapped (around a no-op) so
         // the service's own observers keep receiving events, which means the
@@ -273,6 +290,11 @@ class EngineRunner {
         if (connectionListener == null) {
             setConnectionListener(null);
         }
+    }
+
+    // JetBox: снятие наблюдателя, добавленного addConnectionObserver.
+    public void removeConnectionObserver(ConnectionListener observer) {
+        connectionObservers.remove(observer);
     }
 
     private static ConnectionListener unwrap(ConnectionListener listener) {

@@ -1,0 +1,35 @@
+diff --git a/client/system/info_android.go b/client/system/info_android.go
+index d4f479386..0f944a907 100644
+--- a/client/system/info_android.go
++++ b/client/system/info_android.go
+@@ -60,25 +60,12 @@ func checkFileAndProcess(_ context.Context, _ []string) ([]File, error) {
+ 	return []File{}, nil
+ }
+ 
++// JetBox: the device serial number and ANDROID_ID are not read and not sent to
++// the management server. Both are persistent hardware-bound identifiers; the
++// peer is already identified by its WireGuard key, and the app's privacy
++// policy promises not to collect them.
+ func serial() string {
+-	// try to fetch serial ID using different properties
+-	properties := []string{"ril.serialnumber", "ro.serialno", "ro.boot.serialno", "sys.serialnumber"}
+-	var value string
+-
+-	for _, property := range properties {
+-		value = getprop(property)
+-		if len(value) > 0 {
+-			return value
+-		}
+-	}
+-
+-	// unable to get serial ID, fallback to ANDROID_ID
+-	return androidId()
+-}
+-
+-func androidId() string {
+-	// this is a uniq id defined on first initialization, id will be a new one if user wipes his device
+-	return run("/system/bin/settings", "get", "secure", "android_id")
++	return ""
+ }
+ 
+ func productModel() string {

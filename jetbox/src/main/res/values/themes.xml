@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Окно JetBoxActivity: цвет окна — фон JetBox (без белой вспышки до первого кадра Compose),
+    системные бары прозрачные, содержимое рисуется под ними (enableEdgeToEdge в onCreate).
+-->
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.JetBox" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/jb_window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
+    </style>
+</resources>

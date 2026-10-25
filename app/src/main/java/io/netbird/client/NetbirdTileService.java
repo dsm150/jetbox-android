@@ -87,7 +87,9 @@ public class NetbirdTileService extends TileService {
         Log.d(TAG, "onClick");
 
         if (VpnService.prepare(this) != null) {
-            Intent intent = new Intent(this, MainActivity.class);
+            // JetBox: без согласия VPN — на наш стартовый экран, а не в служебные экраны NetBird.
+            Intent intent = new Intent();
+            intent.setClassName(getPackageName(), "net.jetnet.jetbox.JetBoxActivity");
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 PendingIntent pendingIntent = PendingIntent.getActivity(

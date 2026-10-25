@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="jb_mark_letters">#DCE8F3</color>
+    <color name="jb_window_background">#0A1420</color>
+    <!-- Тёмная заливка AppIcon.icon iOS (appearance: dark). -->
+    <color name="jb_icon_bg_top">#0B1420</color>
+    <color name="jb_icon_bg_bottom">#1A3453</color>
+</resources>

@@ -1,0 +1,6 @@
+# Вымышленная фикстура ссылки подключения в тестах (вариация заглушки setup-ключа из апстрима,
+# 0EF79C2F-DEE1-...); ничего не открывает. Историю не переписываем — отпечатки введения.
+# Fictional connection-link fixture in unit tests; opens nothing. History is not rewritten.
+de793683e8c37a349c61f578211dd88c77e79455:jetbox/src/test/java/net/jetnet/jetbox/store/JetBoxStoreTest.kt:generic-api-key:19
+fd6e0e92c37a9023bdbf378f49842f4f22a7da4f:jetbox/src/test/java/net/jetnet/jetbox/engine/JetBoxOnboardingTest.kt:generic-api-key:37
+ddb2da89b5b8527c437a91f68b80217da48aa0ac:jetbox/src/test/java/net/jetnet/jetbox/link/JetBoxLinkTest.kt:generic-api-key:17

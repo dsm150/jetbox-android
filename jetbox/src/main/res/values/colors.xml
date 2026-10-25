@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Цвета для ресурсов (знак, иконки). В Compose — ui/theme/JetBoxColors.kt (colorset'ы iOS). -->
+<resources>
+    <color name="jb_mark_letters">#273D58</color>
+    <color name="jb_mark_trail">#1288E1</color>
+    <!-- Цвет окна JetBoxActivity до первого кадра — JBColor.background. -->
+    <color name="jb_window_background">#F2F6FA</color>
+    <!-- Иконка приложения — как AppIcon.icon iOS (icon.json: вертикальный градиент; слои jb-letters/jb-trails.svg). -->
+    <color name="jb_icon_bg_top">#273D58</color>
+    <color name="jb_icon_bg_bottom">#1D5E9C</color>
+    <color name="jb_icon_letters">#EEF4FA</color>
+    <color name="jb_icon_trail">#3AAEFF</color>
+</resources>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Только debug-сборка: витрина компонентов JetBox для визуальной сверки с iOS. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".ShowcaseActivity"
+            android:exported="true"
+            android:label="JetBox Showcase"
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" />
+    </application>
+</manifest>

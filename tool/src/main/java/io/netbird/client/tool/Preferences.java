@@ -55,6 +55,6 @@ public class Preferences {
     }
 
     public static String defaultServer() {
-        return "https://api.netbird.io";
+        return "https://netbird.jet-net.net"; // JetBox: сервер JetNet по умолчанию
     }
 }

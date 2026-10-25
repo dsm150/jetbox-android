@@ -1,16 +1,16 @@
 <resources>
-    <string name="fg_notification_channel_name">Serviço NetBird</string>
+    <string name="fg_notification_channel_name">JetBox</string>
     <string name="fg_notification_connected">Conectado</string>
     <string name="fg_notification_connecting">Conectando…</string>
     <string name="fg_notification_disconnected">Desconectado</string>
     <string name="fg_notification_no_network">Nenhuma rede disponível</string>
-    <string name="fg_notification_needs_login">Login necessário</string>
+    <string name="fg_notification_needs_login">The connection to your home was lost. Open your connection link again.</string>
     <string name="fg_notification_error">Erro</string>
     <string name="session_notification_channel_name">Expiração da sessão</string>
-    <string name="session_notification_expiring_title">A sessão do NetBird está expirando</string>
-    <string name="session_notification_expiring_text">Sua sessão expira em cerca de %1$d minutos. Abra o app para estendê-la.</string>
-    <string name="session_notification_expired_title">Sessão do NetBird expirada</string>
-    <string name="session_notification_expired_text">Sua sessão expirou. Abra o app para entrar novamente.</string>
+    <string name="session_notification_expiring_title">JetBox will disconnect soon</string>
+    <string name="session_notification_expiring_text">The connection to your home will be lost in about %1$d minutes. Open your connection link again.</string>
+    <string name="session_notification_expired_title">JetBox disconnected</string>
+    <string name="session_notification_expired_text">The connection to your home was lost. Open your connection link again.</string>
     <string name="session_notification_extend">Estender sessão</string>
 
     <string name="fg_notification_session_expired">Sessão expirada</string>

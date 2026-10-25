@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Виджет JetBox: по умолчанию 2×2 (малый виджет iOS), растягивается до 4×2 (средний) и сжимается
+    до 2×1. Без периодических обновлений: перерисовывает AndroidEngine при смене состояния туннеля.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/jb_widget_description"
+    android:initialLayout="@layout/jb_widget"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="40dp"
+    android:previewLayout="@layout/jb_widget"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

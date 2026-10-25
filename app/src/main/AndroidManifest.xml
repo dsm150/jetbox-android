@@ -2,9 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <permission
-        android:name="io.netbird.permission.NOTIFICATION"
-        android:protectionLevel="signature" />
+    <!--
+        JetBox: объявление signature-разрешения NetBird «…permission.NOTIFICATION» снято — его
+        никто не использует, а при установленном официальном NetBird (другая подпись) установка
+        JetBox падала бы с INSTALL_FAILED_DUPLICATE_PERMISSION.
+    -->
 
     <!--
         Split tunnelling needs to show the user a list of apps. Resolving the
@@ -21,7 +23,25 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
+
+    <!-- JetBox: камера не нужна — zxing-android-embedded здесь только рисует QR (QrCodeDialog,
+         BarcodeEncoder), сканера нет. Библиотека вносит в итоговый манифест CAMERA и camera-фичи;
+         убираем их, чтобы APK не просил камеру (JETBOX-BUILD.md §4.2, стр. 7). -->
+    <uses-permission
+        android:name="android.permission.CAMERA"
+        tools:node="remove" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        tools:node="remove" />
+    <uses-feature
+        android:name="android.hardware.camera.front"
+        tools:node="remove" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        tools:node="remove" />
+    <uses-feature
+        android:name="android.hardware.camera.flash"
+        tools:node="remove" />
 
     <uses-feature
         android:name="android.software.leanback"
@@ -52,15 +72,12 @@
         <activity
             android:name=".MainActivity"
             android:launchMode="singleTask"
-            android:exported="true"
+            android:exported="false"
             android:windowSoftInputMode="adjustPan"
             android:theme="@style/Theme.NetBird.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
-            </intent-filter>
+            <!-- JetBox: ярлык и ссылки — у net.jetnet.jetbox.JetBoxActivity; сюда — только из расширенного режима.
+                 exported=false: все вызовы внутри пакета (настройки JetBox, «Продлить сессию» в уведомлении —
+                 PendingIntent нашего пакета, CustomTabURLOpener); чужим приложениям сюда хода нет. -->
         </activity>
 
         <!-- Persists the in-app language choice on API < 33 (AppCompat per-app locales). -->
