@@ -31,9 +31,8 @@ import net.jetnet.jetbox.engine.EngineApi
 import net.jetnet.jetbox.engine.JetBoxEngine
 import net.jetnet.jetbox.engine.JetBoxOnboarding
 import net.jetnet.jetbox.engine.JetBoxOnboarding.Step
-import net.jetnet.jetbox.engine.HttpUpdateSource
 import net.jetnet.jetbox.engine.UpdateChecker
-import net.jetnet.jetbox.engine.UpdateSource
+import net.jetnet.jetbox.engine.updateCheckerFor
 import net.jetnet.jetbox.logic.ConnectionDefaults
 import net.jetnet.jetbox.logic.JetBoxAdvancedAccess
 import net.jetnet.jetbox.store.JetBoxStore
@@ -47,7 +46,6 @@ import net.jetnet.jetbox.ui.JetBoxSettingsScreen
 import net.jetnet.jetbox.ui.homeViewModelFactory
 import net.jetnet.jetbox.ui.rememberUrlOpener
 import net.jetnet.jetbox.widget.JetBoxWidget
-import java.net.URL
 
 /**
  * Что живёт на уровне процесса — как `@StateObject` в `NetBirdApp` (iOS): сценарий по ссылке
@@ -78,13 +76,11 @@ object JetBoxProcess {
      */
     fun updates(context: Context): UpdateChecker =
         updates ?: synchronized(this) {
-            val url = BuildConfig.UPDATE_URL
-            updates ?: UpdateChecker(
-                source = if (url.isEmpty()) UpdateSource { null }
-                else HttpUpdateSource(URL(url), "JetBox-Android/${BuildConfig.APP_VERSION_NAME}"),
+            updates ?: updateCheckerFor(
+                updateUrl = BuildConfig.UPDATE_URL,
                 kv = prefs(context),
                 currentCode = BuildConfig.APP_VERSION_CODE,
-                enabled = url.isNotEmpty(),
+                userAgent = "JetBox-Android/${BuildConfig.APP_VERSION_NAME}",
             ).also { updates = it }
         }
 

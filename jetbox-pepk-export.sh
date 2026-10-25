@@ -14,8 +14,9 @@
 # загружается в Console вручную. Хранить вне репозитория, после загрузки — удалить.
 #
 # Пароль ключа (release.password; PKCS12 — пароль хранилища и ключа один) не попадает в аргументы
-# команд (видны в ps) и в вывод: pepk получает его через file: (если pepk это умеет — видно по --help)
-# или через stdin. Перед экспортом скрипт сверяет отпечаток release.jks с §6.1.
+# команд (видны в ps) и в вывод: pepk получает его через file: (если в `pepk.jar --help` есть и
+# --keystore-pass, и «file:») или через stdin. Перед экспортом скрипт сверяет отпечаток release.jks
+# с §6.1. Даже сухой прогон (без --run) запускает `java -jar <pepk.jar> --help` — выбрать способ подачи пароля.
 set -euo pipefail
 set +x
 
@@ -62,8 +63,15 @@ cmd=(java -jar "$pepk" --keystore="$keystore" --alias="$alias" --output="$out"
 mode=stdin
 if [ "$interactive" = yes ]; then
     mode=interactive
-elif java -jar "$pepk" --help 2>&1 | grep -q -- '--keystore-pass'; then
-    mode=file
+else
+    # Справку — в переменную, а не `| grep -q`: под pipefail grep, вышедший на первом совпадении,
+    # оставляет java с SIGPIPE — и проверка молча «не находила» (как было в jetbox-bundle.sh).
+    pepk_help=$(java -jar "$pepk" --help 2>&1 || true)
+    if grep -q -- '--keystore-pass' <<< "$pepk_help" && grep -q 'file:' <<< "$pepk_help"; then
+        mode=file
+    fi
+fi
+if [ "$mode" = file ]; then
     cmd+=(--keystore-pass="file:$password_file" --key-pass="file:$password_file")
 fi
 
@@ -73,8 +81,12 @@ echo "Выход: $out"
 
 [ "$run" = yes ] || { echo "Ничего не выполнено: для экспорта — тот же вызов с --run (по слову владельца)."; exit 0; }
 
-mkdir -p "$(dirname "$out")"
-chmod 700 "$(dirname "$out")"
+# Папку выхода закрываем (700), только если создаём её сами: чужую (--out в существующую) не трогаем.
+out_dir=$(dirname "$out")
+if [ ! -d "$out_dir" ]; then
+    mkdir -p "$out_dir"
+    chmod 700 "$out_dir"
+fi
 umask 077
 case "$mode" in
     file|interactive) "${cmd[@]}" ;;

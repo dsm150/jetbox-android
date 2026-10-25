@@ -72,6 +72,26 @@ class HttpUpdateSource(private val url: URL, private val userAgent: String) : Up
 }
 
 /**
+ * Проверка обновлений для сборки с адресом `version.json` [updateUrl] (`BuildConfig.UPDATE_URL`):
+ * пустой адрес — магазинные сборки (`STORE` = `rustore`/`play`, JETBOX-BUILD.md §6.1) — проверка
+ * выключена и в сеть не ходит; иначе — [sourceFor] по этому адресу ([HttpUpdateSource]).
+ */
+fun updateCheckerFor(
+    updateUrl: String,
+    kv: KeyValueStore,
+    currentCode: Int,
+    userAgent: String,
+    io: CoroutineContext = Dispatchers.IO,
+    sourceFor: (URL) -> UpdateSource = { HttpUpdateSource(it, userAgent) },
+): UpdateChecker = UpdateChecker(
+    source = if (updateUrl.isEmpty()) UpdateSource { null } else sourceFor(URL(updateUrl)),
+    kv = kv,
+    currentCode = currentCode,
+    enabled = updateUrl.isNotEmpty(),
+    io = io,
+)
+
+/**
  * Проверка обновлений для сборки «файл с сайта» (`BuildConfig.STORE == "apk"`, адрес — `BuildConfig.UPDATE_URL`);
  * в сборке для магазина ([enabled] = false) ничего не спрашивает и ничего не показывает — обновляет магазин.
  *

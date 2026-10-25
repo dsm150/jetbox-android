@@ -99,7 +99,7 @@ gradle.taskGraph.whenReady {
     val releasePackaging = setOf("packageRelease", "packageReleaseBundle", "signReleaseBundle")
     val needsKey = allTasks.any { it.path.startsWith(":app:") && it.name in releasePackaging }
     if (needsKey && getPropertyOrEnv("NETBIRD_UPLOAD_STORE_FILE") == null) {
-        throw GradleException("ключ подписи не задан — используйте ./jetbox-release.sh")
+        throw GradleException("ключ подписи не задан — используйте ./jetbox-release.sh (APK) или ./jetbox-bundle.sh (бандл Google Play)")
     }
 }
 

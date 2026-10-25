@@ -158,7 +158,7 @@ class BrandingResourcesTest {
     @Test fun releaseScriptAndKeyGuard() {
         val gradle = File(root, "app/build.gradle.kts").readText()
         assertTrue("нет проверки ключа подписи", gradle.contains("gradle.taskGraph.whenReady"))
-        assertTrue(gradle.contains("ключ подписи не задан — используйте ./jetbox-release.sh"))
+        assertTrue(gradle.contains("ключ подписи не задан — используйте ./jetbox-release.sh (APK) или ./jetbox-bundle.sh (бандл Google Play)"))
         val script = File(root, "jetbox-release.sh").readText()
         assertTrue("демон Kotlin унаследует пароль", script.contains("-Pkotlin.compiler.execution.strategy=in-process"))
         assertTrue("демон Gradle останется с паролем", script.contains("--no-daemon"))

@@ -109,7 +109,8 @@ arm64 — 41 МБ вместо 58 МБ. Стектрейсы паники Go п�
 
 ```bash
 ./gradlew :jetbox:testDebugUnitTest                       # наши тесты
-./gradlew test                                            # все (наши + апстрима)
+./gradlew test                                            # все (наши + апстрима), вариант apk
+./gradlew :jetbox:testDebugUnitTest -Pjetbox.store=play   # наши — в варианте play (и rustore)
 ./gradlew assembleDebug -PversionCode=1 -PversionName=1.0 # debug-APK
 ```
 
@@ -228,7 +229,7 @@ $A --es screen SETTINGS --ez update true        # настройки со стр
 
 | № | Файл | Что изменено | Зачем | Как разрешать конфликт |
 |---|---|---|---|---|
-| 1 | `app/build.gradle.kts` | (а) `applicationId = "net.jetnet.jetbox"` (было `io.netbird.client`); `implementation(project(":jetbox"))`; (б) у `release`: `isMinifyEnabled = false` явно, `ndk { abiFilters += … }` — `arm64-v8a,armeabi-v7a`, переопределяется `-Pjetbox.abis=x86_64`; блок `packaging { jniLibs { useLegacyPackaging = <-Pjetbox.legacyPackaging, по умолчанию true> } }`; блок `bundle { language { enableSplit = false } }`; (в) после `android { }` — `gradle.taskGraph.whenReady`: если в графе `:app:packageRelease`/`packageReleaseBundle`/`signReleaseBundle`, а `NETBIRD_UPLOAD_STORE_FILE` не задан — `GradleException("ключ подписи не задан — используйте ./jetbox-release.sh")` (все — с комментарием `// JetBox:`) | (а) Свой пакет в системе и магазинах; подключение нашего модуля. (б) Релиз 1.0: в APK только ABI телефонов, `.so` сжаты (42 МБ вместо ~85; цена — §6.1), R8 выключен (§6); бандл Play — `.so` несжатые и все языки в базе (§6.1.1). (в) Без ключа апстрим молча собирал бы неподписанный релиз; debug, `./gradlew test` (`testReleaseUnitTest` упаковку не тянет) и lint ключа не требуют | Взять апстрим целиком, затем вернуть (а), (б) и (в). `namespace` не трогаем: Java-пакет остаётся `io.netbird.client`, меняется только applicationId. Если апстрим сам завёл `abiFilters`/`packaging` — оставить одно место, наши значения. Проверки — `BrandingResourcesTest.applicationIdIsJetBox`, `releaseBuildIsSlim`, `releaseScriptAndKeyGuard`, `PlayStoreVariantTest.bundleKeepsAllLanguages` |
+| 1 | `app/build.gradle.kts` | (а) `applicationId = "net.jetnet.jetbox"` (было `io.netbird.client`); `implementation(project(":jetbox"))`; (б) у `release`: `isMinifyEnabled = false` явно, `ndk { abiFilters += … }` — `arm64-v8a,armeabi-v7a`, переопределяется `-Pjetbox.abis=x86_64`; блок `packaging { jniLibs { useLegacyPackaging = <-Pjetbox.legacyPackaging, по умолчанию true> } }`; блок `bundle { language { enableSplit = false } }`; (в) после `android { }` — `gradle.taskGraph.whenReady`: если в графе `:app:packageRelease`/`packageReleaseBundle`/`signReleaseBundle`, а `NETBIRD_UPLOAD_STORE_FILE` не задан — `GradleException("ключ подписи не задан — используйте ./jetbox-release.sh (APK) или ./jetbox-bundle.sh (бандл Google Play)")` (все — с комментарием `// JetBox:`) | (а) Свой пакет в системе и магазинах; подключение нашего модуля. (б) Релиз 1.0: в APK только ABI телефонов, `.so` сжаты (42 МБ вместо ~85; цена — §6.1), R8 выключен (§6); бандл Play — `.so` несжатые и все языки в базе (§6.1.1). (в) Без ключа апстрим молча собирал бы неподписанный релиз; debug, `./gradlew test` (`testReleaseUnitTest` упаковку не тянет) и lint ключа не требуют | Взять апстрим целиком, затем вернуть (а), (б) и (в). `namespace` не трогаем: Java-пакет остаётся `io.netbird.client`, меняется только applicationId. Если апстрим сам завёл `abiFilters`/`packaging` — оставить одно место, наши значения. Проверки — `BrandingResourcesTest.applicationIdIsJetBox`, `releaseBuildIsSlim`, `releaseScriptAndKeyGuard`, `PlayStoreVariantTest.bundleKeepsAllLanguages` |
 | 2 | `settings.gradle.kts` | `include(":jetbox")` | Модуль в сборке | Обе стороны: оставить свои `include` и добавленные апстримом |
 | 3 | `build.gradle.kts` | В `plugins`: `kotlin.android`, `kotlin.compose` (`apply false`) | Kotlin и Compose в `:jetbox` (апстрим — чистая Java) | Обе стороны; если апстрим сам перейдёт на Kotlin — взять его плагин и убрать наш дубль |
 | 4 | `gradle/libs.versions.toml` | Версии `kotlin`, `composeBom`, `activityCompose`, `lifecycleCompose`, `coroutines`; библиотеки `compose-*`, `activity-compose`, `lifecycle-*-compose`, `coroutines-*`; плагины `kotlin-android`, `kotlin-compose` | Зависимости модуля `:jetbox` | Обе стороны; при совпадении имён — брать **бо́льшую** версию, затем `./gradlew :jetbox:testDebugUnitTest` (AGP/Kotlin/Compose должны быть совместимы) |
@@ -290,7 +291,7 @@ NetBird ссылаются на `nb_orange`, `nb_logo_full`, `ic_netbird_tile` �
 | 30 | `Readme.md` | Наш целиком (ru + en): что такое JetBox, сборка, лицензия и происхождение | Публичный репозиторий форка — про JetBox, а не про NetBird | `git checkout --ours Readme.md`. Что поменял апстрим — смотреть `git diff <старый тег>..<новый тег> -- Readme.md` и переносить вручную, если касается нас (требования к сборке, версии JDK/NDK/Go) |
 | 31 | `.gitignore` | В конце — наш блок `# JetBox:` (`*.jks`, `*.keystore`, `*.local.md`, `release.password`, `dist/`) | Ключи подписи, локальные заметки и копии релизных APK не попадают в git | Обе стороны: правила апстрима + наш блок целиком в конце |
 | 32 | `NOTICE`, `.gitleaksignore`, `JETBOX-BUILD.md`, `patches/` (строка 28) | Новые файлы (у апстрима их нет) | NOTICE — требования GPL-3.0 п. 5a и сторонние лицензии; `.gitleaksignore` — вымышленные фикстуры ссылки в тестах; этот документ | Конфликта быть не может. Если апстрим заведёт свой `NOTICE` — объединить: его текст + наш |
-| 33 | `jetbox-bundle.sh` (новый, в корне) | Сборка AAB для Google Play: ключ загрузки `upload.jks`, пароль из файла в `NETBIRD_UPLOAD_*`, `--no-daemon`, Kotlin in-process; `-Pjetbox.store=play -Pjetbox.abis=arm64-v8a,armeabi-v7a,x86_64 -Pjetbox.legacyPackaging=false bundleRelease`; после сборки — проверка dex (нет адресов APK) и 16 КБ у всех `.so` | Бандл одной командой с теми же гарантиями, что у `jetbox-release.sh` (§6.1.1) | Конфликта быть не может. Проверка — `PlayStoreVariantTest.bundleScriptGuards` |
+| 33 | `jetbox-bundle.sh` (новый, в корне) | Сборка AAB для Google Play: ключ загрузки `upload.jks`, пароль из файла в `NETBIRD_UPLOAD_*`, `--no-daemon`, Kotlin in-process; `-Pjetbox.store=play -Pjetbox.abis=arm64-v8a,armeabi-v7a,x86_64 -Pjetbox.legacyPackaging=false bundleRelease`; до сборки — тесты варианта play; после — проверка dex/res/root/resources.pb (нет адресов APK; режим `--check-apk-urls <aab>`), 16 КБ у всех `.so`, `bundletool validate` (с `BUNDLETOOL`) | Бандл одной командой с теми же гарантиями, что у `jetbox-release.sh` (§6.1.1) | Конфликта быть не может. Проверка — `PlayStoreVariantTest.bundleScriptGuards`, `bundleScriptFindsApkUrls` |
 | 34 | `jetbox-pepk-export.sh` (новый, в корне) | Экспорт `release.jks` для Play App Signing инструментом PEPK из Console; без `--run` только показывает команду | Ключ подписи приложения — один на сайт, RuStore и Play (§6.2, «Google Play») | Конфликта быть не может. Проверка — `PlayStoreVariantTest.pepkScriptIsDryRunByDefault` |
 
 Итого врезок в таблице — **34 строки** (в т. ч. строка 26 — удалённые бинарники,
@@ -494,17 +495,24 @@ source ../jetbox-env.sh    # <папка документов>/jetbox-env.sh —
 * `BuildConfig.STORE` (`:jetbox`) — `apk` по умолчанию, `-Pjetbox.store=rustore` / `play` для
   магазинов; другое значение — ошибка сборки. Адрес `version.json` — `BuildConfig.UPDATE_URL`,
   он задан **только** для `apk`: в магазинных сборках пустой, и `UpdateChecker` выключен
-  (`enabled = url.isNotEmpty()`) — ни запроса, ни капсулы, ни строки «Обновить», ни самого адреса в
+  (`updateCheckerFor(BuildConfig.UPDATE_URL, …)`: пустой адрес — `enabled = false`) — ни запроса, ни капсулы, ни строки «Обновить», ни самого адреса в
   dex (политика Play: обновляться только через магазин). Ссылки «О программе» (сайт, «Исходный
   код», лицензия, политика) — во всех вариантах. Сторож — `PlayStoreVariantTest` (в т. ч. в main-коде
-  и ресурсах `:jetbox`/`:app`/`:tool` нет строк `box.jet-net.net/android` и `JetBox.apk`).
+  и ресурсах `:jetbox`/`:app`/`:tool` нет строк `box.jet-net.net/android` и `JetBox.apk`); его тесты
+  зависят от `BuildConfig.STORE` и зелёные в каждом варианте — прогонять все три (`./gradlew test` и
+  `:jetbox:testDebugUnitTest -Pjetbox.store=play|rustore`).
 
 ### 6.1.1. Google Play — бандл (AAB), 1.0.1 / versionCode 11
 
 ```bash
 source ../jetbox-env.sh
 BUNDLETOOL=<bundletool> ./jetbox-bundle.sh   # → dist/JetBox-1.0.1-play.aab; BUNDLETOOL — необязательно
+./jetbox-bundle.sh --check-apk-urls <файл.aab>  # только проверка адресов APK по готовому бандлу
 ```
+
+`BUNDLETOOL` — путь к `bundletool-all-<версия>.jar` (запускается `java -jar`) или к исполняемой
+обёртке (скрипт с `java -cp <bundletool.jar>:<зависимости> …BundleToolMain "$@"`, см. последний
+пункт ниже); голый `bundletool-<версия>.jar` с Maven Google без зависимостей не запустится.
 
 * **Вариант** `-Pjetbox.store=play` (скрипт ставит сам): как `rustore` — см. последний пункт §6.1.
   Версия одна на все варианты: `apk/rustore/play` одного `versionCode` отличаются только `STORE`
@@ -519,9 +527,14 @@ BUNDLETOOL=<bundletool> ./jetbox-bundle.sh   # → dist/JetBox-1.0.1-play.aab; B
   Пути — `JETBOX_UPLOAD_KEYSTORE` / `JETBOX_UPLOAD_PASSWORD_FILE`.
 * **Скрипт** `jetbox-bundle.sh` — те же гарантии, что у `jetbox-release.sh` (пароль из файла в
   окружение, `--no-daemon`, Kotlin in-process, `set +x`; без ключа — ошибка «ключ подписи не задан»).
-  После сборки сам проверяет готовый файл и падает, если: в dex есть `box.jet-net.net/android` или
-  `JetBox.apk`; у какой-то `.so` `LOAD Align` < `0x4000`. Печатает ABI, размер, отпечаток ключа
-  загрузки; с `BUNDLETOOL` — ещё `versionCode`/`versionName` из манифеста бандла и `validate`.
+  **До сборки** прогоняет `./gradlew -Pjetbox.store=play :jetbox:testDebugUnitTest` (ещё без пароля
+  в окружении) и падает при провале. **После сборки** проверяет готовый файл и падает, если: в
+  `base/dex/*`, `base/res/*`, `base/root/*` или `base/resources.pb` есть `box.jet-net.net/android`
+  или `JetBox.apk` (распаковка во временную папку и `grep -r`; конвейер `unzip -p | grep -q` под
+  `pipefail` ловил SIGPIPE 141 и проверка молча не срабатывала — исправлено 26.10.2026, самотест —
+  `PlayStoreVariantTest.bundleScriptFindsApkUrls`); у какой-то `.so` `LOAD Align` < `0x4000`; с
+  `BUNDLETOOL` — `bundletool validate` не прошёл. Печатает ABI, размер, отпечаток ключа загрузки; с
+  `BUNDLETOOL` — ещё `versionCode`/`versionName` из манифеста бандла.
 * **ABI бандла:** `arm64-v8a`, `armeabi-v7a`, `x86_64` (Play отдаёт устройству одну; x86_64 —
   Chromebook и эмуляторы). APK сайта — по-прежнему `-Pjetbox.abis` (§6.1), по умолчанию две ABI.
 * **Языки:** `bundle { language { enableSplit = false } }` — все строки в базовом APK. Язык
@@ -601,7 +614,9 @@ BUNDLETOOL=<bundletool> ./jetbox-bundle.sh   # → dist/JetBox-1.0.1-play.aab; B
   подписывает нашим `release.jks` — подпись одна у сайта, RuStore и Play, `assetlinks.json` не
   меняется, версия из Play встаёт поверх версии с сайта и наоборот. Экспорт ключа — PEPK из Console:
   `./jetbox-pepk-export.sh --pepk <pepk.jar> --encryption-key <encryption_public_key.pem>` показывает
-  команду и сверяет отпечаток `release.jks` с §6.1; выполняет — только с `--run`, по слову
+  команду и сверяет отпечаток `release.jks` с §6.1 (сухой прогон всё же **запускает**
+  `java -jar <pepk.jar> --help`: по справке выбирается подача пароля — `file:`, если в ней есть и
+  `--keystore-pass`, и `file:`, иначе stdin; папку выхода скрипт закрывает `700`, только если создал её сам); выполняет — только с `--run`, по слову
   владельца (пароль — `file:` или stdin, не в аргументах; результат — `~/.config/jetbox-android/pepk/`,
   после загрузки удалить; сухой прогон на заглушках 26.10.2026 — отпечаток совпал, команда собрана).
   Выбор ключа подписи — **один раз и навсегда**. Первая загрузка — через
