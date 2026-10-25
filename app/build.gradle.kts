@@ -65,10 +65,20 @@ android {
         }
     }
 
-    // JetBox: .so ядра в APK сжаты (extractNativeLibs) — APK вдвое меньше.
+    // JetBox: .so ядра в APK сжаты (extractNativeLibs) — APK вдвое меньше. Бандл для Google Play
+    // (jetbox-bundle.sh) передаёт -Pjetbox.legacyPackaging=false: Play сам отдаёт устройству одну ABI,
+    // а несжатые .so не распаковываются на телефоне второй копией (замер — JETBOX-BUILD.md §6.1).
     packaging {
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = (project.findProperty("jetbox.legacyPackaging") as String?)?.toBooleanStrict() ?: true
+        }
+    }
+
+    // JetBox: бандл без разбиения по языкам — язык меняется и внутри приложения (AppCompat на
+    // Android < 13), а сплита с нужными строками на телефоне могло бы не оказаться.
+    bundle {
+        language {
+            enableSplit = false
         }
     }
 

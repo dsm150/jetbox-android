@@ -330,7 +330,8 @@ private fun previewUi(state: VpnDisplayState) = HomeUiState(
     bytesTx = 6_100_000,
 )
 
-private val PreviewUpdate = UpdateInfo(11, "1.1", "https://box.jet-net.net/android/JetBox.apk", null)
+// Адрес в превью не открывается; адреса APK в main нет вовсе (магазинные сборки, JETBOX-BUILD.md §6.1).
+private val PreviewUpdate = UpdateInfo(11, "1.1", "https://box.jet-net.net/preview", null)
 
 @Composable
 private fun HomePreview(state: VpnDisplayState, dark: Boolean, update: Boolean = false) = JetBoxTheme(darkTheme = dark) {

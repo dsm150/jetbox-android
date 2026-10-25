@@ -33,6 +33,7 @@ import net.jetnet.jetbox.engine.JetBoxOnboarding
 import net.jetnet.jetbox.engine.JetBoxOnboarding.Step
 import net.jetnet.jetbox.engine.HttpUpdateSource
 import net.jetnet.jetbox.engine.UpdateChecker
+import net.jetnet.jetbox.engine.UpdateSource
 import net.jetnet.jetbox.logic.ConnectionDefaults
 import net.jetnet.jetbox.logic.JetBoxAdvancedAccess
 import net.jetnet.jetbox.store.JetBoxStore
@@ -72,20 +73,20 @@ object JetBoxProcess {
 
     /**
      * Проверка обновлений — одна на процесс (главный экран и настройки видят один ответ). В сборке
-     * для магазина выключена: обновляет магазин.
+     * для магазина (RuStore, Google Play) выключена: обновляет магазин, и адреса `version.json` в такой
+     * сборке нет (`BuildConfig.UPDATE_URL` пуст, см. `jetbox/build.gradle.kts`).
      */
     fun updates(context: Context): UpdateChecker =
         updates ?: synchronized(this) {
+            val url = BuildConfig.UPDATE_URL
             updates ?: UpdateChecker(
-                source = HttpUpdateSource(URL(UpdateChecker.VERSION_URL), "JetBox-Android/${BuildConfig.APP_VERSION_NAME}"),
+                source = if (url.isEmpty()) UpdateSource { null }
+                else HttpUpdateSource(URL(url), "JetBox-Android/${BuildConfig.APP_VERSION_NAME}"),
                 kv = prefs(context),
                 currentCode = BuildConfig.APP_VERSION_CODE,
-                enabled = BuildConfig.STORE == STORE_APK,
+                enabled = url.isNotEmpty(),
             ).also { updates = it }
         }
-
-    /** `BuildConfig.STORE` сборки «файл с сайта». */
-    const val STORE_APK = "apk"
 
     private fun create(app: Context): JetBoxOnboarding {
         // Обычно уже сделано при старте процесса ([JetBoxInitProvider]); повтор безвреден — метка «применено».
