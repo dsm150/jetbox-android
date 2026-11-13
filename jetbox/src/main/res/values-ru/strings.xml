@@ -14,7 +14,7 @@
     <string name="jb_privacy_notice">Приложение передаёт на сервер JetNet только служебные данные подключения: имя устройства, версию приложения и сетевые адреса — они нужны, чтобы ваша сеть узнала это устройство. Содержимое трафика не собирается и не хранится. Данные не передаются третьим лицам.</string>
     <string name="jb_privacy_more">Подробнее</string>
     <string name="jb_switch_title">Другой JetBox</string>
-    <string name="jb_switch_message">Сейчас телефон привязан к «%1$s», а ссылка ведёт на «%2$s». Переключить? Текущее подключение будет сброшено.</string>
+    <string name="jb_switch_message">Сейчас телефон привязан к «%1$s», а ссылка ведёт на «%2$s». Переключить? Прежнее подключение будет заменено.</string>
     <string name="jb_switch_confirm">Переключить</string>
     <string name="jb_registering">Регистрируем устройство…</string>
     <string name="jb_connecting">Подключаем…</string>

@@ -3,6 +3,7 @@ package net.jetnet.jetbox.store
 import net.jetnet.jetbox.link.JetBoxLinkPayload
 import net.jetnet.jetbox.link.boxIdentityOf
 import net.jetnet.jetbox.link.hostOf
+import net.jetnet.jetbox.link.maskSecret
 import org.json.JSONObject
 
 /**
@@ -18,6 +19,13 @@ data class JetBoxBox(
     val boxName: String?,
     /** Момент регистрации, миллисекунды Unix-эпохи. */
     val registeredAtMillis: Long,
+    /** Токен устройства из облачной ссылки (`t=`). Часть удостоверения; в журнал не выводится. */
+    val deviceToken: String? = null,
+    /**
+     * Отпечаток setup key, по которому телефон зарегистрирован (`JetBoxIdentity.fingerprint`), сам
+     * ключ не хранится. `null` — запись сделана сборкой до 1.0.3.
+     */
+    val setupKeyFingerprint: String? = null,
 ) {
     val displayName: String
         get() = boxName?.takeIf { it.isNotEmpty() }
@@ -30,7 +38,7 @@ data class JetBoxBox(
 
     /** Та же формула, что у `JetBoxLinkPayload.boxIdentity` (одна функция на двоих). */
     val identity: String
-        get() = boxIdentityOf(managementURL, exitNodeName)
+        get() = boxIdentityOf(managementURL, exitNodeName, deviceToken, boxName)
 
     /**
      * Имя дома из свежей ссылки того же JetBox. `null` — менять нечего
@@ -49,7 +57,15 @@ data class JetBoxBox(
         put(K_SELECTED, selectedExitNode ?: JSONObject.NULL)
         put(K_NAME, boxName ?: JSONObject.NULL)
         put(K_REGISTERED, registeredAtMillis)
+        put(K_TOKEN, deviceToken ?: JSONObject.NULL)
+        put(K_FINGERPRINT, setupKeyFingerprint ?: JSONObject.NULL)
     }.toString()
+
+    // Токен устройства не должен попасть в журнал через toString().
+    override fun toString(): String =
+        "JetBoxBox(managementURL=$managementURL, exitNodeName=$exitNodeName, selectedExitNode=$selectedExitNode, " +
+            "boxName=$boxName, registeredAtMillis=$registeredAtMillis, deviceToken=${deviceToken?.let(::maskSecret)}, " +
+            "setupKeyFingerprint=${setupKeyFingerprint?.take(8)})"
 
     companion object {
         private const val K_MANAGEMENT = "managementURL"
@@ -57,6 +73,8 @@ data class JetBoxBox(
         private const val K_SELECTED = "selectedExitNode"
         private const val K_NAME = "boxName"
         private const val K_REGISTERED = "registeredAtMillis"
+        private const val K_TOKEN = "deviceToken"
+        private const val K_FINGERPRINT = "keyFingerprint" // не «setupKey…»: на диске нет ничего, похожего на ключ
 
         /** Битый или неполный JSON — `null`. */
         fun fromJson(json: String): JetBoxBox? = runCatching {
@@ -67,10 +85,12 @@ data class JetBoxBox(
                 selectedExitNode = o.optStringOrNull(K_SELECTED),
                 boxName = o.optStringOrNull(K_NAME),
                 registeredAtMillis = o.getLong(K_REGISTERED),
+                deviceToken = o.optStringOrNull(K_TOKEN),
+                setupKeyFingerprint = o.optStringOrNull(K_FINGERPRINT),
             )
         }.getOrNull()
 
         private fun JSONObject.optStringOrNull(key: String): String? =
-            if (isNull(key)) null else getString(key)
+            if (!has(key) || isNull(key)) null else getString(key)
     }
 }

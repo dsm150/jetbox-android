@@ -18,6 +18,7 @@ import net.jetnet.jetbox.link.JetBoxLinkPayload
 import net.jetnet.jetbox.logic.ExitNodeResolver
 import net.jetnet.jetbox.logic.ExitOutcome
 import net.jetnet.jetbox.logic.JetBoxFailure
+import net.jetnet.jetbox.logic.JetBoxIdentity
 import net.jetnet.jetbox.logic.RouteInfo
 import net.jetnet.jetbox.logic.VpnDisplayState
 import net.jetnet.jetbox.store.JetBoxStore
@@ -34,9 +35,13 @@ import net.jetnet.jetbox.store.JetBoxStore
  * - перед подъёмом туннеля — системное согласие на VPN ([Step.NeedsVpnConsent]);
  * - туннель ждём не только по CONNECTED: ошибка ядра или «нужен вход» на шаге Connecting —
  *   сразу отказ, без 45 секунд ожидания;
- * - переключение на другой JetBox останавливает прежний туннель до регистрации; если регистрация
- *   нового не удалась — адрес сервера в конфиге ядра откатывается (`AndroidEngine.register`),
- *   а прежний туннель поднимается снова (если он был поднят и согласие на VPN есть);
+ * - переключение на другой JetBox или вход с новой личностью останавливает прежний туннель до
+ *   регистрации; если регистрация не удалась — `AndroidEngine.register` возвращает прежние файлы
+ *   профиля ядра (новая личность) или адрес сервера, а прежний туннель поднимается снова (если он
+ *   был поднят и согласие на VPN есть);
+ * - новая личность (новый ключ WireGuard) — по отпечатку setup key, [JetBoxIdentity.plan]: экран
+ *   «Другой JetBox» решает удостоверение подключения, ключ — отпечаток (новая ссылка того же
+ *   подключения входит с новым ключом без вопроса);
  * - `first_launch` (экран первого запуска апстрима) гасится после успешной регистрации, в
  *   `AndroidEngine.register`; в iOS `skipUpstreamOnboarding` делается при приёме ссылки;
  * - «нужен вход» ядра (`isLoginRequired`) залипает до интерактивного входа и вход по ключу его не
@@ -207,13 +212,18 @@ class JetBoxOnboarding(
         _step.value = Step.Registering(payload)
 
         // Android: туннель прежнего JetBox гасим до регистрации, иначе start() застанет ядро
-        // запущенным со старым конфигом. Хранилище не трогаем до успеха.
+        // запущенным со старым конфигом (а при новой личности файлы профиля уходят из-под него).
+        // Хранилище не трогаем до успеха.
         val current = store.currentBox
         val switching = current != null && current.identity != payload.boxIdentity
+        // Новая ссылка — новый ключ WireGuard: иначе management узнает прежний пир и setup key
+        // (его группы) не применит. Повтор той же ссылки — прежний ключ.
+        val fresh = JetBoxIdentity.plan(current, payload, engine.hasDeviceConfig()) == JetBoxIdentity.Plan.FRESH
+        if (fresh) log("JetBox: новая ссылка — регистрируем новую личность устройства")
         var wasUp = false
-        if (switching && (engine.isRunning() || engine.state.value != VpnDisplayState.DISCONNECTED)) {
+        if ((switching || fresh) && (engine.isRunning() || engine.state.value != VpnDisplayState.DISCONNECTED)) {
             wasUp = true
-            log("JetBox: переключение — останавливаем туннель прежнего объекта")
+            log("JetBox: замена подключения — останавливаем прежний туннель")
             engine.stop()
             val stopped = withTimeoutOrNull(stopTimeoutMs) {
                 engine.state.first { it == VpnDisplayState.DISCONNECTED }
@@ -230,10 +240,11 @@ class JetBoxOnboarding(
             }
         }
 
-        val registered = engine.register(payload.managementURL, payload.setupKey)
+        val registered = engine.register(payload.managementURL, payload.setupKey, freshIdentity = fresh)
         registered.exceptionOrNull()?.let { e ->
             if (wasUp) {
-                // Адрес сервера в конфиге уже откатил engine.register; поднимаем прежний JetBox.
+                // Прежние файлы профиля (или адрес сервера) уже вернул engine.register; поднимаем
+                // прежний JetBox.
                 log("JetBox: переключение не удалось — возвращаем прежний JetBox")
                 if (engine.needsVpnConsent() == null) engine.start()
             }

@@ -191,6 +191,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
     }
 
     init {
+        recoverIdentityFiles()
         ensureBound()
         watchNetwork()
         // Виджет на рабочем столе — по каждой смене состояния (и сразу: при создании движка
@@ -319,18 +320,58 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
         }
     }
 
-    override suspend fun register(managementURL: String, setupKey: String): Result<Unit> =
+    override suspend fun hasDeviceConfig(): Boolean = withContext(Dispatchers.IO) {
+        runCatching { File(ProfileManagerWrapper(app).activeConfigPath).exists() }.getOrDefault(false)
+    }
+
+    /** Файлы активного профиля ядра, хранящие личность устройства; конфиг — первым (главный). */
+    private fun identityFiles(configPath: String): List<File> {
+        val statePath = runCatching { ProfileManagerWrapper(app).activeStateFilePath }.getOrNull()
+        return listOfNotNull(
+            File(configPath),
+            statePath?.let(::File),
+            File(ProfileFilesSwap.accountPathFor(configPath)),
+        )
+    }
+
+    /**
+     * Остатки прошлой регистрации с новой личностью (процесс умер между stash и commit/restore):
+     * возвращаем прежние файлы — их личность совпадает с сохранённым JetBox.
+     */
+    private fun recoverIdentityFiles() {
+        try {
+            val swap = ProfileFilesSwap(identityFiles(ProfileManagerWrapper(app).activeConfigPath))
+            if (swap.hasLeftovers()) {
+                swap.restore()
+                Log.i(TAG, "прежняя личность устройства восстановлена после оборванной регистрации")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "не удалось разобрать остатки прошлой регистрации: ${e.message}")
+        }
+    }
+
+    override suspend fun register(managementURL: String, setupKey: String, freshIdentity: Boolean): Result<Unit> =
         registerMutex.withLock {
             withContext(Dispatchers.IO) {
                 Log.i(TAG, "register: url=$managementURL key=${maskSecret(setupKey)}")
                 var previousURL: String? = null
+                var swap: ProfileFilesSwap? = null
                 var ok = false
                 try {
                     // Порядок — как FirstInstallFragment.applyServer() апстрима.
                     val configPath = ProfileManagerWrapper(app).activeConfigPath
-                    // Прежний адрес — только из существующего конфига: иначе ядро отдаст адрес
-                    // по умолчанию, и «откат» записал бы его вместо пустоты.
-                    if (File(configPath).exists()) {
+                    if (freshIdentity) {
+                        // Ядро берёт ключ WireGuard из существующего конфига (UpdateOrCreateConfig),
+                        // а management узнаёт пир по ключу и setup key новой ссылки не применяет.
+                        // Прежние файлы откладываем: ядро создаст конфиг с новым ключом.
+                        // Сначала присвоить: оборванный stash тоже откатывается в finally.
+                        val s = ProfileFilesSwap(identityFiles(configPath))
+                        swap = s
+                        if (s.stash()) Log.i(TAG, "register: остатки прошлой регистрации возвращены до замены")
+                        Log.i(TAG, "register: новая личность устройства")
+                    } else if (File(configPath).exists()) {
+                        // Прежний адрес — только из существующего конфига: иначе ядро отдаст адрес
+                        // по умолчанию, и «откат» записал бы его вместо пустоты.
                         previousURL = runCatching {
                             MDMBridge.openPreferences(app, configPath).managementURL
                         }.getOrNull()
@@ -354,6 +395,9 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
                         Log.w(TAG, "register failed: ${error.message}")
                         return@withContext Result.failure(asCoreError(error))
                     }
+                    // Новая личность принята сервером: прежние файлы больше не нужны. Конфиг ядро
+                    // записало ещё в NewAuth, вход в Go его не переписывает.
+                    swap?.commit()
                     // Флаг апстримового PreferenceUI: MainActivity не покажет экран первого запуска.
                     app.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
                         .edit().putBoolean(FIRST_LAUNCH_KEY, false).commit()
@@ -366,22 +410,37 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
                     Log.w(TAG, "register failed: ${e.message}")
                     Result.failure(asCoreError(e))
                 } finally {
-                    // Неудача (в том числе отмена) не должна оставлять в конфиге адрес нового
-                    // сервера: прежний JetBox после этого поднимется уже не к своему management.
-                    if (!ok && previousURL != null && previousURL != managementURL) {
-                        try {
-                            MDMBridge.openPreferences(app, ProfileManagerWrapper(app).activeConfigPath).apply {
-                                setManagementURL(previousURL)
-                                commit()
-                            }
-                            Log.i(TAG, "register: адрес сервера возвращён на прежний")
-                        } catch (e: Exception) {
-                            Log.w(TAG, "register: не удалось вернуть прежний адрес сервера: ${e.message}")
-                        }
-                    }
+                    if (!ok) rollBack(swap, previousURL, managementURL)
                 }
             }
         }
+
+    /**
+     * Неудача (в том числе отмена) не должна оставлять в конфиге ни адрес нового сервера, ни новый
+     * ключ: прежний JetBox после этого поднимется уже не к своему management или не своим пиром.
+     * Новая личность — прежние файлы целиком; иначе — только прежний адрес сервера.
+     */
+    private fun rollBack(swap: ProfileFilesSwap?, previousURL: String?, managementURL: String) {
+        if (swap != null) {
+            try {
+                swap.restore()
+                Log.i(TAG, "register: прежняя личность устройства возвращена")
+            } catch (e: Exception) {
+                Log.w(TAG, "register: не удалось вернуть прежние файлы профиля: ${e.message}")
+            }
+            return
+        }
+        if (previousURL == null || previousURL == managementURL) return
+        try {
+            MDMBridge.openPreferences(app, ProfileManagerWrapper(app).activeConfigPath).apply {
+                setManagementURL(previousURL)
+                commit()
+            }
+            Log.i(TAG, "register: адрес сервера возвращён на прежний")
+        } catch (e: Exception) {
+            Log.w(TAG, "register: не удалось вернуть прежний адрес сервера: ${e.message}")
+        }
+    }
 
     override fun needsVpnConsent(): Intent? = VpnService.prepare(app)
 

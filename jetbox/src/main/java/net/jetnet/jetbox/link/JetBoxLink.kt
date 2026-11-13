@@ -22,6 +22,11 @@ data class JetBoxLinkPayload(
     val exitNodeName: String?,
     /** Человекочитаемое имя коробки, если прислано. */
     val boxName: String?,
+    /**
+     * Токен устройства из облачной ссылки Кабинета (`t=`, LINK-CONTRACT 1.2): уникален на устройство,
+     * «Новая ссылка» в Кабинете выдаёт новый. Часть удостоверения; в журнал — только маска.
+     */
+    val deviceToken: String? = null,
 ) {
     /** Маска ключа для экрана и логов: видны только последние 4 символа. */
     val maskedKey: String
@@ -33,13 +38,14 @@ data class JetBoxLinkPayload(
             ?: exitNodeName?.takeIf { it.isNotEmpty() }
             ?: hostOf(managementURL)
 
-    /** Признак «та же коробка»: host(management) в нижнем регистре + выход. */
+    /** Признак «то же подключение» для экрана подтверждения — см. [boxIdentityOf]. */
     val boxIdentity: String
-        get() = boxIdentityOf(managementURL, exitNodeName)
+        get() = boxIdentityOf(managementURL, exitNodeName, deviceToken, boxName)
 
-    // Ключ не должен попасть в логи через toString().
+    // Ключ и токен не должны попасть в логи через toString().
     override fun toString(): String =
-        "JetBoxLinkPayload(setupKey=$maskedKey, managementURL=$managementURL, exitNodeName=$exitNodeName, boxName=$boxName)"
+        "JetBoxLinkPayload(setupKey=$maskedKey, managementURL=$managementURL, exitNodeName=$exitNodeName, " +
+            "boxName=$boxName, deviceToken=${deviceToken?.let(::maskSecret)})"
 }
 
 /** Единая маска секрета для экрана и логов: видны только последние 4 символа. */
@@ -48,9 +54,28 @@ fun maskSecret(secret: String): String =
 
 internal fun hostOf(url: String): String = runCatching { URI(url).host }.getOrNull() ?: url
 
-/** Единая формула «та же коробка» для ссылки и сохранённого JetBox: иначе своя ссылка спросит «переключить?». */
-internal fun boxIdentityOf(managementURL: String, exitNodeName: String?): String =
-    hostOf(managementURL).lowercase(Locale.ROOT) + "|" + (exitNodeName ?: "")
+/**
+ * Единая формула «то же подключение» для ссылки и сохранённого JetBox (LINK-CONTRACT 1.2): иначе
+ * своя ссылка спросит «переключить?». Решает только, показывать ли экран «Другой JetBox»; новая ли
+ * личность устройства (ключ WireGuard) — решает отпечаток setup key, `JetBoxIdentity.plan`.
+ *
+ * * есть выход `e` — `хост(m)|e` (коробка);
+ * * иначе есть токен устройства `t` — `хост(m)|t:<t>` (облачный абонент: свой `t` на устройство);
+ * * иначе (старая ссылка) — `хост(m)|n:<n>`: другая коробка, если отличается хост или имя.
+ */
+internal fun boxIdentityOf(
+    managementURL: String,
+    exitNodeName: String?,
+    deviceToken: String?,
+    boxName: String?,
+): String {
+    val host = hostOf(managementURL).lowercase(Locale.ROOT)
+    return when {
+        !exitNodeName.isNullOrEmpty() -> "$host|$exitNodeName"
+        !deviceToken.isNullOrEmpty() -> "$host|t:$deviceToken"
+        else -> "$host|n:${boxName ?: ""}"
+    }
+}
 
 object JetBoxLink {
     sealed class Outcome {
@@ -86,6 +111,7 @@ object JetBoxLink {
                 managementURL = management,
                 exitNodeName = params["e"]?.takeIf { it.isNotEmpty() },
                 boxName = params["n"]?.takeIf { it.isNotEmpty() },
+                deviceToken = params["t"]?.takeIf { it.isNotEmpty() },
             )
         )
     }

@@ -47,8 +47,16 @@ interface EngineApi {
      * Ошибка — `Result.failure`, текст исключения — сообщение ядра (для `JetBoxFailure.classify`).
      * Отмена корутины пробрасывается как `CancellationException`, но логин в Go не отменяется:
      * пир может зарегистрироваться на сервере уже после отмены.
+     *
+     * [freshIdentity] — регистрация с новой личностью устройства (новый ключ WireGuard): прежние
+     * файлы профиля ядра откладываются, успех их удаляет, ошибка или отмена возвращают как были.
+     * Иначе ключ сохраняется, а при неудаче откатывается только адрес сервера. Кто решает —
+     * `JetBoxIdentity.plan`. Туннель на время регистрации с новой личностью должен быть остановлен.
      */
-    suspend fun register(managementURL: String, setupKey: String): Result<Unit>
+    suspend fun register(managementURL: String, setupKey: String, freshIdentity: Boolean): Result<Unit>
+
+    /** Есть ли конфиг ядра у активного профиля (личность устройства уже создана). */
+    suspend fun hasDeviceConfig(): Boolean
 
     /** Интент системного согласия на VPN (`VpnService.prepare`), `null` — согласие уже есть. */
     fun needsVpnConsent(): Intent?

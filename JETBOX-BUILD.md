@@ -215,6 +215,41 @@ $A --es screen SETTINGS --ez update true        # настройки со стр
 Апстримовые экраны **спрятаны, а не удалены** — иначе каждое слияние тега
 превращалось бы в разбор конфликтов.
 
+### 3.1. Замена подключения: новый ключ WireGuard (баг 13.11.2026)
+
+Личность устройства в NetBird — его ключ WireGuard. Ядро (`NewAuth` →
+`UpdateOrCreateConfig`) берёт ключ из существующего `netbird.cfg` и создаёт новый,
+**только если файла нет**; management узнаёт пир по ключу, и setup key новой ссылки
+(его `auto_groups`, лимит устройств) **не применяется** — телефон остаётся в группах
+прежнего JetBox. Найдено на iOS 13.11.2026, там помогла только переустановка.
+
+* **Решает отпечаток setup key** (`logic/JetBoxIdentity.plan`, порт iOS
+  `JetBoxIdentity.swift`): в `JetBoxBox` хранится не ключ, а `keyFingerprint` —
+  SHA-256 ключа в нижнем регистре, первые 16 байт hex (как iOS). Другой отпечаток или
+  другой хост management → `register(…, freshIdentity = true)`; тот же отпечаток
+  (повтор той же ссылки) → прежний ключ: одноразовый setup key уже израсходован, а
+  удалённый на сервере пир восстанавливается входом с тем же ключом. Конфига нет →
+  обычная регистрация (ядро и так создаст ключ). Конфиг есть, а сохранённого JetBox нет
+  (вход в расширенном режиме) → новый ключ. Запись сборки без отпечатка → по
+  удостоверению подключения (то же — прежний ключ).
+* **Экран «Другой JetBox»** решает удостоверение подключения (`boxIdentityOf`,
+  LINK-CONTRACT 1.2): `хост(m)|e`, иначе `хост(m)|t:<токен устройства>`, иначе
+  `хост(m)|n:<имя>`. Та же identity с другим отпечатком (Кабинет перевыпустил ссылку) —
+  без вопроса, но с новым ключом.
+* **Как** (`AndroidEngine.register`, `engine/ProfileFilesSwap`): под `registerMutex`
+  файлы активного профиля (`netbird.cfg`/`<id>.json`, `state.json`/`<id>.state.json`,
+  `netbird.account.json`/`<id>.account.json`) переименовываются в `*.jetbox-prev`
+  (отсутствующий — маркер `*.jetbox-absent`), ядро пишет новый конфиг с новым ключом;
+  успех — копии удаляются (копия конфига последней: это точка фиксации), ошибка или
+  отмена — файлы возвращаются как были, побайтно и с теми же правами. Остатки после
+  смерти процесса разбираются при создании движка и перед следующим stash (прежнее
+  совпадает с сохранённым JetBox: хранилище пишется только после успеха). Туннель на это
+  время остановлен; при неудаче прежний поднимается снова (`JetBoxOnboarding`).
+  Без `freshIdentity` при неудаче откатывается только адрес сервера, как раньше.
+* Старый пир на сервере не трогаем — его убирает Кабинет при отзыве устройства. Ключи в
+  журнал не попадают: только «новая личность устройства». Контракт ядра сторожит
+  `UpstreamContractsTest.coreIdentityFiles`.
+
 ## 4. Врезки в апстрим (таблица конфликтов)
 
 Всё, что форк меняет вне `jetbox/`. Список снят по факту:
@@ -315,7 +350,7 @@ NetBird ссылаются на `nb_orange`, `nb_logo_full`, `ic_netbird_tile` �
 | `INTENT_ACTION_START` — FGS до `runEngine` | `VPNService.onStartCommand` | `AndroidEngine.start` | — (не соберётся) |
 | prefs `ui_prefs`, ключ `first_launch` | `app/.../ui/PreferenceUI.java` | `AndroidEngine.register` | Расширенный режим покажет экран первого запуска NetBird |
 | prefs `netbird`, ключ `isConnectionForceRelayed` | `tool/.../Preferences.java` | `ConnectionDefaults` (через `JetBoxProcess.startup`) | Весь трафик снова через ретранслятор |
-| `MDMBridge.openPreferences(ctx, configPath)`, `MDMBridge.newAuth(ctx, configPath, url)`, `ProfileManagerWrapper.getActiveConfigPath()` | `tool/.../MDMBridge.java`, `ProfileManagerWrapper.java` | `AndroidEngine.register` (порядок — как `FirstInstallFragment.applyServer`) | Регистрация по ключу |
+| `MDMBridge.openPreferences(ctx, configPath)`, `MDMBridge.newAuth(ctx, configPath, url)`, `ProfileManagerWrapper.getActiveConfigPath()`/`getActiveStateFilePath()` | `tool/.../MDMBridge.java`, `ProfileManagerWrapper.java` | `AndroidEngine.register` (порядок — как `FirstInstallFragment.applyServer`; файлы личности — §3.1) | Регистрация по ключу; новая личность при замене |
 | Коды `Android.ClientState*` (= `peer.ClientState`, `iota`: 0 Disconnected, 1 Connected, 2 Connecting, 3 Disconnecting, 4 NoNetwork) и `Android.ConnStatusConnected` | `netbird/client/internal/peer/listener.go`, `netbird/client/android/*.go` | `CoreState`, `HomeViewModel`, `AndroidEngine` | «Нет интернета» и старт без сети на щите |
 | Имя класса `io.netbird.client.MainActivity` (строкой) | `app/` | `openUpstreamMainActivity`, `ForegroundNotification.extendIntent` | Расширенный режим и «Продлить сессию» не откроются |
 

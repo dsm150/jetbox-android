@@ -116,7 +116,8 @@ class JetBoxStoreTest {
 
     @Test fun identityIsHostLowercasePlusExit() {
         assertEquals("mgmt.example.net|one", box(url = "https://MGMT.Example.net").identity)
-        assertEquals("mgmt.example.net|", box(exit = null).identity)
+        // Без выхода и токена (старая ссылка) — хост + имя (LINK-CONTRACT 1.2).
+        assertEquals("mgmt.example.net|n:Дом", box(exit = null).identity)
     }
 
     @Test fun identityIgnoresSelectedExitNode() {
@@ -168,6 +169,53 @@ class JetBoxStoreTest {
         assertNotNull(renamed)
         assertEquals("Home", renamed!!.boxName)
         assertEquals("two", renamed.selectedExitNode)
+    }
+
+    // endregion
+
+    // region токен устройства и отпечаток ключа (LINK-CONTRACT 1.2, баг 13.11.2026)
+
+    @Test fun rememberStoresTokenAndFingerprintButNotKey() {
+        val store = JetBoxStore(MemoryStore())
+        store.remember(payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=Tariff&t=dev-token-1"), 5L)
+        val b = store.currentBox!!
+        assertEquals("dev-token-1", b.deviceToken)
+        assertEquals("cf4c4732fd3b8f8a55b60871950a2f22", b.setupKeyFingerprint)
+        assertFalse(b.toJson().contains(key))
+        assertFalse("токен в toString — только маской", b.toString().contains("dev-token-1"))
+    }
+
+    @Test fun jsonRoundTripWithTokenAndFingerprint() {
+        val b = box().copy(deviceToken = "tok", setupKeyFingerprint = "ab".repeat(16))
+        assertEquals(b, JetBoxBox.fromJson(b.toJson()))
+    }
+
+    @Test fun recordOfOlderBuildHasNoTokenOrFingerprint() {
+        val old = """{"managementURL":"https://mgmt.example.net","exitNodeName":"one","selectedExitNode":"one","boxName":"Дом","registeredAtMillis":1}"""
+        val b = JetBoxBox.fromJson(old)!!
+        assertNull(b.deviceToken)
+        assertNull(b.setupKeyFingerprint)
+        assertEquals(box(at = 1L), b)
+    }
+
+    @Test fun identityRuleOfContract12() {
+        val e = box(exit = "one").copy(deviceToken = "t1")
+        assertEquals("выход важнее токена", "mgmt.example.net|one", e.identity)
+        val t1 = box(exit = null).copy(deviceToken = "t1")
+        assertEquals(t1.identity, t1.copy(boxName = "Другой тариф").identity)
+        assertNotEquals(t1.identity, t1.copy(deviceToken = "t2").identity)
+        assertNotEquals(t1.identity, box(exit = null).identity)
+        val legacy = box(exit = null)
+        assertEquals(legacy.identity, box(exit = null, selected = null).identity)
+        assertNotEquals(legacy.identity, box(exit = null, name = "Дача").identity)
+        assertNotEquals(legacy.identity, box(exit = null, url = "https://other.example.net").identity)
+    }
+
+    @Test fun storedTokenMatchesLinkIdentity() {
+        val p = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=Tariff&t=tok&p=android")
+        val store = JetBoxStore(MemoryStore())
+        store.remember(p, 1L)
+        assertEquals(p.boxIdentity, store.currentBox!!.identity)
     }
 
     // endregion

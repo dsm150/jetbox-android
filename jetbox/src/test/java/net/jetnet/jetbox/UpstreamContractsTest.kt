@@ -112,6 +112,32 @@ class UpstreamContractsTest {
         assertTrue(Regex("public static\\s+\\S*Auth\\s+newAuth\\(Context context, String configPath, String managementUrl\\)").containsMatchIn(mdm))
         val pm = read("tool/src/main/java/io/netbird/client/tool/ProfileManagerWrapper.java")
         assertTrue(pm.contains("getActiveConfigPath()"))
+        assertTrue(pm.contains("getActiveStateFilePath()"))
+    }
+
+    /**
+     * Новая личность устройства (`AndroidEngine.register(…, freshIdentity = true)`, `ProfileFilesSwap`)
+     * держится на том, что ядро создаёт ключ WireGuard только для отсутствующего конфига, а файлы
+     * профиля называются так, как мы их откладываем.
+     */
+    @Test fun coreIdentityFiles() {
+        val config = read("netbird/client/internal/profilemanager/config.go")
+        val create = config.substringAfter("func UpdateOrCreateConfig(", "")
+        assertTrue("UpdateOrCreateConfig не найден", create.isNotEmpty())
+        assertTrue(
+            "ядро больше не создаёт новый конфиг только при отсутствии файла",
+            Regex("if !configExists \\{[^}]*createProvisionedConfig").containsMatchIn(create.take(800)),
+        )
+        val pm = read("netbird/client/mobile/profile_manager.go")
+        assertTrue(pm.contains("defaultConfigFilename = \"netbird.cfg\""))
+        assertTrue(pm.contains("filepath.Join(pm.configDir, \"state.json\")"))
+        assertTrue(pm.contains("id+\".state.json\""))
+        assertTrue(read("netbird/client/mobile/profile_state.go").contains("profileAccountSuffix = \".account.json\""))
+        // Вход по ключу конфиг не переписывает: его записал NewAuth (откат после отмены безопасен).
+        val login = read("netbird/client/android/login.go")
+        assertTrue(login.contains("profilemanager.UpdateOrCreateConfig(inputCfg)"))
+        val setupLogin = login.substringAfter("func (a *Auth) loginWithSetupKeyAndSaveConfig(", "")
+        assertTrue(setupLogin.isNotEmpty() && !setupLogin.substringBefore("\n}").contains("WriteOutConfig"))
     }
 
     /** Коды `ClientState` ядра: наш [CoreState] обязан совпадать с порядком `iota` в Go. */

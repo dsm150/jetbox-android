@@ -111,4 +111,10 @@ class WordingTest {
         assertEquals("Обновить до %1\$s", ru["jb_update_install"]!![""])
         assertEquals("Update to %1\$s", en["jb_update_install"]!![""])
     }
+
+    /** Решение руководителя 13.11.2026: подключение при замене не «сбрасывается», а «заменяется». */
+    @Test fun switchMessageSaysPreviousConnectionIsReplaced() {
+        assertTrue(ru.getValue("jb_switch_message").getValue("").endsWith("Переключить? Прежнее подключение будет заменено."))
+        assertTrue(en.getValue("jb_switch_message").getValue("").endsWith("Switch? The previous connection will be replaced."))
+    }
 }

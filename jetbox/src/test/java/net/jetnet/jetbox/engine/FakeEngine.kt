@@ -28,6 +28,9 @@ class FakeEngine : EngineApi {
     var consentIntent: Intent? = null
     var loginRequired: Boolean = false
 
+    /** Есть ли конфиг ядра (личность устройства) — ответ [hasDeviceConfig]. */
+    var configExists: Boolean = false
+
     /** Работает ли ядро; `null` — как `state != DISCONNECTED`. */
     var running: Boolean? = null
 
@@ -43,6 +46,13 @@ class FakeEngine : EngineApi {
     var registerCalls = 0; private set
     var lastRegisterUrl: String? = null; private set
     var lastRegisterKey: String? = null; private set
+    /** `freshIdentity` каждого вызова [register], по порядку. */
+    val registerFreshIdentity = mutableListOf<Boolean>()
+    /**
+     * Сколько раз движок «вернул прежние файлы профиля»: регистрация с новой личностью не удалась
+     * (как `AndroidEngine.register` → `ProfileFilesSwap.restore`).
+     */
+    var restoredIdentityFiles = 0; private set
     var needsVpnConsentCalls = 0; private set
     var startCalls = 0; private set
     var stopCalls = 0; private set
@@ -58,13 +68,21 @@ class FakeEngine : EngineApi {
         return online.value
     }
 
-    override suspend fun register(managementURL: String, setupKey: String): Result<Unit> {
+    override suspend fun register(managementURL: String, setupKey: String, freshIdentity: Boolean): Result<Unit> {
         registerCalls++
         lastRegisterUrl = managementURL
         lastRegisterKey = setupKey
-        registerGate?.await()
+        registerFreshIdentity += freshIdentity
+        try {
+            registerGate?.await()
+        } finally {
+            if (freshIdentity && (registerResult.isFailure || registerGate?.isCompleted == false)) restoredIdentityFiles++
+        }
+        if (registerResult.isSuccess) configExists = true
         return registerResult
     }
+
+    override suspend fun hasDeviceConfig(): Boolean = configExists
 
     override fun needsVpnConsent(): Intent? {
         needsVpnConsentCalls++
