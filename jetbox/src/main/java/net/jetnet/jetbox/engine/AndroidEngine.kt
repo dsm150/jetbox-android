@@ -330,6 +330,10 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
         runCatching { swapFor(ProfileManagerWrapper(app).activeConfigPath).hasConfig() }.getOrDefault(false)
     }
 
+    override suspend fun hasUnfinishedSwap(): Boolean = withContext(Dispatchers.IO) {
+        runCatching { swapFor(ProfileManagerWrapper(app).activeConfigPath).hasLeftovers() }.getOrDefault(false)
+    }
+
     /** Файлы активного профиля ядра, хранящие личность устройства; конфиг — первым (главный). */
     private fun swapFor(configPath: String): ProfileFilesSwap {
         val statePath = runCatching { ProfileManagerWrapper(app).activeStateFilePath }.getOrNull()
@@ -376,8 +380,12 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
                 val done: () -> Unit = {
                     onRegistered()
                     // Флаг апстримового PreferenceUI: MainActivity не покажет экран первого запуска.
-                    app.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
-                        .edit().putBoolean(FIRST_LAUNCH_KEY, false).commit()
+                    // После onRegistered хранилище уже новое: сбой этой записи не должен стать
+                    // «неудачей регистрации» — откат файлов развёл бы их с хранилищем.
+                    runCatchingLogged("first_launch") {
+                        app.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
+                            .edit().putBoolean(FIRST_LAUNCH_KEY, false).commit()
+                    }
                 }
                 val result = if (freshIdentity) {
                     registerFresh(configPath, managementURL, setupKey, done)
@@ -413,8 +421,9 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
 
     /**
      * Прежний ключ (повтор своей ссылки, первый вход): остатки оборванной замены — сначала разобрать
-     * (иначе старт процесса потом вернул бы их поверх этой регистрации); неудача входа или отмена —
-     * вернуть прежний адрес сервера.
+     * (иначе старт процесса потом вернул бы их поверх этой регистрации) на условиях замены —
+     * [IdentityRegistration.recoverGuarded]: запуск ядра закрыт, ядро работает — отказ. Неудача
+     * входа или отмена — вернуть прежний адрес сервера.
      */
     private suspend fun registerKeepingKey(
         configPath: String,
@@ -422,11 +431,14 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
         setupKey: String,
         onRegistered: () -> Unit,
     ): Result<Unit> {
-        try {
-            IdentityRegistration.recover(swapFor(configPath), storedFingerprint())
-                ?.let { Log.i(TAG, "register: остатки прошлой замены — $it") }
-        } catch (e: Exception) {
-            return Result.failure(IdentityRegistration.RestoreFailed(e))
+        val swap = swapFor(configPath)
+        if (swap.hasLeftovers()) {
+            // Не привязано — не узнать, работает ли ядро: файлы не трогаем.
+            if (withTimeoutOrNull(BIND_TIMEOUT_MS) { awaitBinder() } == null) {
+                return Result.failure(IllegalStateException("VPN service is not bound"))
+            }
+            IdentityRegistration(swap, processGate) { Log.i(TAG, it) }.recoverGuarded(storedFingerprint())
+                .onFailure { return Result.failure(it as? Exception ?: Exception(it)) }
         }
         var previousURL: String? = null
         var ok = false
@@ -686,21 +698,38 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
          * оборванной замены личности — до плитки, виджета и always-on этого процесса. Ядро не
          * загружается: метки ищутся в каталоге конфигов, список файлов записан в метке; решение —
          * [IdentityRegistration.recover] по отпечатку в хранилище. Без меток — два `listFiles`.
-         * Идёт замена в этом процессе — не трогаем.
+         * Идёт замена в этом процессе или ядро уже работает (повтор из `JetBoxApp.create`) — не
+         * трогаем: файлы профиля под работающим ядром не меняются, остатки разберёт регистрация.
+         * Каждая метка — отдельно: сбой одной не мешает остальным.
          */
         fun recoverIdentityFiles(context: Context) {
             if (VPNService.isIdentitySwapInProgress()) return
-            try {
-                val pending = ProfileFilesSwap.findPending(context.filesDir)
-                if (pending.isEmpty()) return
-                val stored = JetBoxStore(JetBoxProcess.prefs(context)).currentBox?.setupKeyFingerprint
-                for (p in pending) {
-                    val outcome = IdentityRegistration.recover(ProfileFilesSwap.fromPending(p), stored)
-                    Log.i(TAG, "остатки оборванной замены личности (${p.name}): $outcome")
-                }
+            if (instance?.binder?.isRunning == true) {
+                Log.i(TAG, "остатки замены личности: ядро работает, разбор отложен до регистрации")
+                return
+            }
+            val pending = try {
+                ProfileFilesSwap.findPending(context.filesDir)
             } catch (e: Exception) {
-                // Остатки остаются; следующая регистрация начнёт с их разбора.
-                Log.w(TAG, "не удалось разобрать остатки замены личности: ${e.message}")
+                Log.w(TAG, "не удалось найти остатки замены личности: ${e.message}")
+                return
+            }
+            if (pending.isEmpty()) return
+            val stored = try {
+                JetBoxStore(JetBoxProcess.prefs(context)).currentBox?.setupKeyFingerprint
+            } catch (e: Exception) {
+                Log.w(TAG, "остатки замены личности: хранилище не прочитано: ${e.message}")
+                return
+            }
+            for (p in pending) {
+                try {
+                    val swap = ProfileFilesSwap.fromPending(p) { Log.w(TAG, it) }
+                    val outcome = IdentityRegistration.recover(swap, stored)
+                    Log.i(TAG, "остатки оборванной замены личности (${p.name}): $outcome")
+                } catch (e: Exception) {
+                    // Остатки этой метки остаются; следующая регистрация начнёт с их разбора.
+                    Log.w(TAG, "не удалось разобрать остатки замены личности (${p.name}): ${e.message}")
+                }
             }
         }
 

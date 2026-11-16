@@ -18,7 +18,8 @@ import java.nio.file.Files
  * Регистрация с новой личностью идёт через настоящий [IdentityRegistration] и [ProfileFilesSwap]
  * на файлах профиля во временной папке [profileDir]: «ядро» при входе пишет в [configFile] ключ
  * `key=<setup key>`, если конфига нет, — как `NewAuth`. Чья личность на диске — [deviceKey].
- * Запуск ядра на время замены закрыт ([gateClosed]): [start] тогда отклоняется.
+ * Запуск ядра на время замены закрыт ([gateClosed]): [start] тогда отклоняется. Путь прежнего ключа,
+ * как у `AndroidEngine`, сначала разбирает остатки оборванной замены (`recoverGuarded`).
  */
 class FakeEngine(
     val profileDir: File = Files.createTempDirectory("jetbox-profile").toFile().apply { deleteOnExit() },
@@ -105,16 +106,18 @@ class FakeEngine(
         lastRegisterUrl = managementURL
         lastRegisterKey = setupKey
         registerFreshIdentity += freshIdentity
-        if (!freshIdentity) {
-            val error = login(setupKey)
-            if (error != null) return Result.failure(error)
-            onRegistered()
-            return Result.success(Unit)
-        }
         val gate = object : IdentityRegistration.TunnelGate {
             override fun close() { gateClosed = true }
             override fun open() { gateClosed = false }
             override fun isEngineRunning() = isRunning()
+        }
+        if (!freshIdentity) {
+            // Как AndroidEngine.registerKeepingKey: остатки оборванной замены — сначала разобрать.
+            IdentityRegistration(swap(), gate).recoverGuarded(storedFingerprint()).onFailure { return Result.failure(it) }
+            val error = login(setupKey)
+            if (error != null) return Result.failure(error)
+            onRegistered()
+            return Result.success(Unit)
         }
         return IdentityRegistration(swap(), gate).register(
             JetBoxIdentity.fingerprint(setupKey), storedFingerprint(), { login(setupKey) }, onRegistered,
@@ -129,6 +132,8 @@ class FakeEngine(
     }
 
     override suspend fun hasDeviceConfig(): Boolean = configExists
+
+    override suspend fun hasUnfinishedSwap(): Boolean = swap().hasLeftovers()
 
     override fun needsVpnConsent(): Intent? {
         needsVpnConsentCalls++

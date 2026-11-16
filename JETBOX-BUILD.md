@@ -238,10 +238,12 @@ $A --es screen SETTINGS --ez update true        # настройки со стр
   другим отпечатком ключа (Кабинет перевыпустил ссылку) — без вопроса, но с новым ключом.
   * **Для ссылок без `e` и `t` имя входит в identity**: переименование в Кабинете покажет
     «Другой JetBox» (так по правилу), `renamed()` для них не действует.
-  * **Записи ≤ 1.0.2** (нет отпечатка ключа): `JetBoxBox.isSameConnection` и запасная ветка
-    `plan` сравнивают по формуле 1.0.2 `хост|(e ?: "")`, как запасная ветка iOS. Своя облачная
-    ссылка с `t` — тот же JetBox, ключ прежний; после успешного входа запись переписывается
-    по-новому (с отпечатками).
+  * **Записи ≤ 1.0.2** (нет отпечатка ключа): экран «Другой JetBox»
+    (`JetBoxBox.isSameConnection`) мягкий — формула 1.0.2 `хост|(e ?: "")`. А `plan` оставляет
+    прежний ключ **только ссылке коробки** (`e` есть) с тем же `хост|e`; облачная ссылка (без
+    `e`) → новый ключ. iOS сравнивает полную identity, но у нас старая запись `t` не хранила, и
+    по `хост|e` любые две облачные ссылки одного management совпадают — прежний ключ вернул бы
+    баг. После успешного входа запись переписывается по-новому (с отпечатками).
 * **Новая личность = новый конфиг**: настройки расширенного режима, живущие в конфиге ядра
   (Rosenpass, lazy connection, PSK, SSH и т. п.), при замене подключения сбрасываются на
   значения ядра по умолчанию — как на iOS. Повтор той же ссылки их не трогает.
@@ -253,8 +255,11 @@ $A --es screen SETTINGS --ez update true        # настройки со стр
      Затем проверка `binder.isRunning` (под тем же замком `EngineRunner`): ядро работает —
      отказ до любых файлов (`EngineStillRunning` → «Не удалось включить защиту»).
   2. Остатки прошлого раза — `IdentityRegistration.recover` (см. ниже).
+     Путь прежнего ключа разбирает их так же под флагом — `recoverGuarded`: остатков нет —
+     флаг не трогается; есть — флаг, ядро работает → `EngineStillRunning`, иначе разбор.
+     Сценарий по `EngineApi.hasUnfinishedSwap()` гасит туннель и при повторе своей ссылки.
   3. **stash**: метка `<конфиг>.jetbox-pending` (с `fsync`: отпечаток нового ключа и список
-     файлов), потом файлы активного профиля (`netbird.cfg`/`<id>.json`,
+     файлов; после переименований — `fsync` каталога, где система позволяет), потом файлы активного профиля (`netbird.cfg`/`<id>.json`,
      `state.json`/`<id>.state.json`, `netbird.account.json`/`<id>.account.json`) — в
      `*.jetbox-prev` (отсутствующий — маркер `*.jetbox-absent`).
   4. **Вход** — ядро пишет новый конфиг с новым ключом.
@@ -267,15 +272,21 @@ $A --es screen SETTINGS --ez update true        # настройки со стр
   * **Восстановление при старте** — `JetBoxProcess.startup` (`JetBoxInitProvider.onCreate`),
     синхронно: провайдер создаётся до сервиса туннеля, приёмника виджета и плитки, так что ядро
     этого процесса не стартует поверх остатков. Ядро не загружается: метки ищутся в `filesDir`
-    и `filesDir/profiles`, список файлов — в метке. Без меток — два `listFiles` на главном
+    и `filesDir/profiles`, список файлов — в метке; файлы сверяются **по имени** и ищутся рядом с
+    меткой (`/data/user/0/…` и `/data/data/…` — один каталог), расхождение — в журнал. Каждая
+    метка разбирается отдельно. Ядро уже работает (повтор из `JetBoxApp.create`) — разбор
+    пропускается, его сделает регистрация. Без меток — два `listFiles` на главном
     потоке до первых кадров; с меткой — несколько переименований маленьких файлов. Метка с тем
     же отпечатком, что в хранилище → commit, иначе → restore. Регистрация (с новым ключом или
     прежним) тоже начинает с этого разбора.
-  * **Отмена** во время входа — restore, прежний туннель поднимается снова (если был поднят).
-    **Restore не удался** — `RestoreFailed` → «Что-то пошло не так» с подробностями «не удалось
+  * **Отмена** во время входа — restore, прежний туннель поднимается снова (если был поднят),
+    но только если остатков нет (`hasUnfinishedSwap`): возврат не удался — туннель не
+    поднимается (шаг сценария задаёт тот, кто отменил). **Restore не удался** — `RestoreFailed` → «Что-то пошло не так» с подробностями «не удалось
     вернуть прежнее подключение…», туннель **не** поднимается; «Попробовать снова» начнёт с
     восстановления.
   * Без `freshIdentity` при неудаче откатывается только адрес сервера, как раньше.
+  * `first_launch` (`ui_prefs`) пишется после `onRegistered` через `runCatching`: хранилище
+    уже новое, сбой этой записи не должен откатывать файлы.
 * Старый пир на сервере не трогаем — его убирает Кабинет при отзыве устройства. Ключи в
   журнал не попадают: только «новая личность устройства». Контракт ядра сторожит
   `UpstreamContractsTest.coreIdentityFiles`, врезку — `identitySwapGateInRunClient`.
@@ -384,7 +395,7 @@ NetBird ссылаются на `nb_orange`, `nb_logo_full`, `ic_netbird_tile` �
 | `INTENT_ACTION_START` — FGS до `runEngine` | `VPNService.onStartCommand` | `AndroidEngine.start` | — (не соберётся) |
 | prefs `ui_prefs`, ключ `first_launch` | `app/.../ui/PreferenceUI.java` | `AndroidEngine.register` | Расширенный режим покажет экран первого запуска NetBird |
 | prefs `netbird`, ключ `isConnectionForceRelayed` | `tool/.../Preferences.java` | `ConnectionDefaults` (через `JetBoxProcess.startup`) | Весь трафик снова через ретранслятор |
-| `MDMBridge.openPreferences(ctx, configPath)`, `MDMBridge.newAuth(ctx, configPath, url)`, `ProfileManagerWrapper.getActiveConfigPath()`/`getActiveStateFilePath()` | `tool/.../MDMBridge.java`, `ProfileManagerWrapper.java` | `AndroidEngine.register` (порядок — как `FirstInstallFragment.applyServer`; файлы личности — §3.1) | Регистрация по ключу; новая личность при замене |
+| `MDMBridge.openPreferences(ctx, configPath)`, `MDMBridge.newAuth(ctx, configPath, url)`, `ProfileManagerWrapper.getActiveConfigPath()`/`getActiveStateFilePath()` (состояние и учётная запись — в каталоге конфига: на это опирается `ProfileFilesSwap.fromPending`) | `tool/.../MDMBridge.java`, `ProfileManagerWrapper.java`, `netbird/client/mobile/profile_manager.go` | `AndroidEngine.register` (порядок — как `FirstInstallFragment.applyServer`; файлы личности — §3.1) | Регистрация по ключу; новая личность при замене |
 | Коды `Android.ClientState*` (= `peer.ClientState`, `iota`: 0 Disconnected, 1 Connected, 2 Connecting, 3 Disconnecting, 4 NoNetwork) и `Android.ConnStatusConnected` | `netbird/client/internal/peer/listener.go`, `netbird/client/android/*.go` | `CoreState`, `HomeViewModel`, `AndroidEngine` | «Нет интернета» и старт без сети на щите |
 | Имя класса `io.netbird.client.MainActivity` (строкой) | `app/` | `openUpstreamMainActivity`, `ForegroundNotification.extendIntent` | Расширенный режим и «Продлить сессию» не откроются |
 

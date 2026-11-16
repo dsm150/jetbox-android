@@ -5,8 +5,10 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 
 /**
  * Файлы профиля ядра (конфиг с ключом WireGuard, состояние, учётная запись), отложенные на время
@@ -73,6 +75,7 @@ class ProfileFilesSwap(
                 throw IOException("не удалось создать маркер ${markerOf(f).name}")
             }
         }
+        syncDir()
     }
 
     /**
@@ -85,7 +88,9 @@ class ProfileFilesSwap(
             remove(markerOf(f))
             remove(backupOf(f))
         }
+        syncDir()
         remove(pendingFile)
+        syncDir()
     }
 
     /**
@@ -109,7 +114,9 @@ class ProfileFilesSwap(
                 }
             }
         }
+        syncDir()
         remove(pendingFile)
+        syncDir()
     }
 
     /** Удалить, если есть; не вышло и со второй попытки — `IOException`. */
@@ -131,6 +138,16 @@ class ProfileFilesSwap(
             out.fd.sync()
         }
         move(tmp, pendingFile)
+        syncDir()
+    }
+
+    /**
+     * Переименования — на диск до следующего шага (иначе после сбоя питания порядок «метка первой,
+     * удаление метки последним» не гарантирован). Где каталог так не синхронизировать — пропускаем.
+     */
+    private fun syncDir() {
+        val dir = primary.absoluteFile.parentFile ?: return
+        runCatching { FileChannel.open(dir.toPath(), StandardOpenOption.READ).use { it.force(true) } }
     }
 
     private fun move(from: File, to: File) {
@@ -165,14 +182,27 @@ class ProfileFilesSwap(
             }
 
         /**
-         * Замена по её метке — список файлов записан в метке. Метка нечитаема (оборвана запись) —
-         * stash до переименований не дошёл: хватит одного конфига, чтобы убрать метку.
+         * Замена по её метке — список файлов записан в метке. Файлы профиля ядра лежат в каталоге
+         * конфига (`client/mobile/profile_manager.go`), поэтому сравниваются по имени, а пути
+         * пересобираются от каталога метки: тот же каталог Android пишет по-разному (`/data/user/0/…`
+         * и `/data/data/…`), строгое сравнение откатилось бы на один конфиг и оставило копии
+         * остальных. Расхождение каталога — в журнал. Метка нечитаема (оборвана запись) или первым в
+         * ней не конфиг — stash до переименований не дошёл: хватит одного конфига, чтобы убрать метку.
          */
-        fun fromPending(pending: File): ProfileFilesSwap {
+        fun fromPending(pending: File, log: (String) -> Unit = {}): ProfileFilesSwap {
             val config = File(pending.path.removeSuffix(PENDING_SUFFIX))
-            val files = readPending(pending)?.second?.map(::File)?.takeIf { it.firstOrNull() == config }
-                ?: listOf(config)
-            return ProfileFilesSwap(files)
+            val dir = pending.absoluteFile.parentFile
+            val recorded = readPending(pending)?.second
+            val files = recorded?.map { File(dir, File(it).name) }?.takeIf { it.firstOrNull()?.name == config.name }
+            if (files == null) {
+                log("метка ${pending.name}: список файлов не прочитан или первым не конфиг — разбираем только конфиг")
+                return ProfileFilesSwap(listOf(config))
+            }
+            recorded.map { File(it).absoluteFile.parentFile?.path }.distinct()
+                .filter { it != dir?.path }
+                .takeIf { it.isNotEmpty() }
+                ?.let { log("метка ${pending.name}: файлы записаны в $it, разбираем в ${dir?.path}") }
+            return ProfileFilesSwap(listOf(config) + files.drop(1))
         }
 
         private fun readPending(pending: File): Pair<String, List<String>>? = runCatching {

@@ -78,6 +78,30 @@ class IdentityRegistration(
         }
     }
 
+    /**
+     * Разбор остатков вне замены — путь прежнего ключа (`AndroidEngine.registerKeepingKey`) — на тех
+     * же условиях, что [register]: запуск ядра закрыт на время разбора, ядро работает —
+     * [EngineStillRunning] до любых файлов. Остатков нет — запуск ядра не трогается.
+     * @return что сделано (`null` — разбирать нечего); сбой разбора — [RestoreFailed].
+     */
+    fun recoverGuarded(storedFingerprint: String?): Result<Recovery?> {
+        if (!swap.hasLeftovers()) return Result.success(null)
+        gate.close()
+        try {
+            if (gate.isEngineRunning()) {
+                log("остатки замены подключения: ядро ещё работает, файлы не трогаем")
+                return Result.failure(EngineStillRunning())
+            }
+            return try {
+                Result.success(recover(swap, storedFingerprint).also { log("остатки замены подключения — $it") })
+            } catch (e: Exception) {
+                Result.failure(RestoreFailed(e))
+            }
+        } finally {
+            gate.open()
+        }
+    }
+
     private suspend fun swapAndLogin(
         newFingerprint: String,
         login: suspend () -> Exception?,
@@ -99,6 +123,8 @@ class IdentityRegistration(
             error
         } catch (e: CancellationException) {
             // Сценарий отменён: хранилище не тронуто — возвращаем прежнее и пробрасываем отмену.
+            // Возврат не удался — остатки на диске: сценарий видит их (`EngineApi.hasUnfinishedSwap`)
+            // и прежний туннель не поднимает.
             if (!remembered) withContext(NonCancellable) { rollBack() }
             throw e
         } catch (e: Exception) {

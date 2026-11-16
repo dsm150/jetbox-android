@@ -55,12 +55,26 @@ class JetBoxIdentityTest {
         assertEquals(Plan.FRESH, JetBoxIdentity.plan(box(fp = null, e = "other"), link(), configExists = true))
     }
 
-    /** Запись ≤ 1.0.2 без `e` + своя облачная ссылка с `t` — формула 1.0.2 `хост|e`: ключ прежний. */
-    @Test fun legacyRecordAndOwnCloudLinkKeepsKey() {
+    /**
+     * Запись ≤ 1.0.2 без `e` + облачная ссылка (без `e`): `t` в старой записи не хранился, и по
+     * `хост|e` любые две облачные ссылки одного management — «тот же» JetBox. Ключ — новый, иначе
+     * чужая облачная ссылка осталась бы прежним пиром (баг 13.11.2026).
+     */
+    @Test fun legacyRecordAndCloudLinkIsFresh() {
         val legacy = JetBoxBox("https://netbird.jet-net.net", null, null, "Тариф", 1L)
         val cloud = (JetBoxLink.parse("jetbox://connect#k=$keyA&m=https://netbird.jet-net.net&n=Тариф&t=tok")
             as JetBoxLink.Outcome.Payload).payload
-        assertEquals(Plan.REUSE, JetBoxIdentity.plan(legacy, cloud, configExists = true))
+        assertEquals(Plan.FRESH, JetBoxIdentity.plan(legacy, cloud, configExists = true))
+        val other = (JetBoxLink.parse("jetbox://connect#k=$keyB&m=https://netbird.jet-net.net&n=Тариф&t=tok2")
+            as JetBoxLink.Outcome.Payload).payload
+        assertEquals(Plan.FRESH, JetBoxIdentity.plan(legacy, other, configExists = true))
+    }
+
+    /** Запись ≤ 1.0.2 коробки + ссылка той же коробки (тот же `e`) — прежний ключ, даже с другим setup key. */
+    @Test fun legacyRecordAndSameBoxLinkReuses() {
+        assertEquals(Plan.REUSE, JetBoxIdentity.plan(box(fp = null), link(k = keyB), configExists = true))
+        assertEquals(Plan.REUSE, JetBoxIdentity.plan(box(fp = null), link(), configExists = true))
+        assertEquals(Plan.FRESH, JetBoxIdentity.plan(box(fp = null, e = null), link(e = null), configExists = true))
     }
 
     @Test fun tokenFingerprintKeepsCase() {

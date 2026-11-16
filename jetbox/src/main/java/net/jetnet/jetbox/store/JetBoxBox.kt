@@ -26,8 +26,8 @@ data class JetBoxBox(
     val deviceTokenHash: String? = null,
     /**
      * Отпечаток setup key, по которому телефон зарегистрирован (`JetBoxIdentity.fingerprint`), сам
-     * ключ не хранится. `null` — запись сделана сборкой ≤ 1.0.2: сравнение по её формуле
-     * ([isSameConnection]).
+     * ключ не хранится. `null` — запись сделана сборкой ≤ 1.0.2: экран «Другой JetBox» — по её
+     * формуле ([isSameConnection]), прежний ключ — только ссылке коробки (`JetBoxIdentity.plan`).
      */
     val setupKeyFingerprint: String? = null,
 ) {

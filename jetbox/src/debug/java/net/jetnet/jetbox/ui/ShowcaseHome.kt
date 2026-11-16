@@ -61,6 +61,7 @@ class ShowcaseEngine(initial: ShowcaseHomeState) : EngineApi {
         onRegistered: () -> Unit,
     ): Result<Unit> = Result.success(Unit).also { onRegistered() }
     override suspend fun hasDeviceConfig() = true
+    override suspend fun hasUnfinishedSwap() = false
     override fun needsVpnConsent(): Intent? = null
     override fun isLoginRequired() = false
     override fun isRunning() = state.value != VpnDisplayState.DISCONNECTED

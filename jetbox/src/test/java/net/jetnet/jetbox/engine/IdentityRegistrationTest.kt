@@ -239,6 +239,49 @@ class IdentityRegistrationTest {
         assertEquals(listOf("close", "open"), env.gateLog)
     }
 
+    /** Путь прежнего ключа: остатков нет — запуск ядра не трогаем. */
+    @Test fun recoverGuardedWithoutLeftoversDoesNothing() {
+        val env = Env()
+        env.running = true
+        assertEquals(Result.success<Recovery?>(null), env.registration().recoverGuarded(env.stored))
+        assertEquals(emptyList<String>(), env.gateLog)
+        env.assertOld()
+    }
+
+    /** Остатки есть, ядро не работает: разбор под закрытым запуском ядра. */
+    @Test fun recoverGuardedRestoresUnderClosedGate() {
+        val env = Env()
+        env.swap.stash(newFp)
+        env.cfg.writeText("key=NEW")
+        var closedDuringRecover = false
+        env.failDelete = { closedDuringRecover = env.gateClosed; false }
+        val r = env.registration().recoverGuarded(env.stored)
+        assertEquals(Result.success<Recovery?>(Recovery.RESTORED), r)
+        assertTrue(closedDuringRecover)
+        assertEquals(listOf("close", "open"), env.gateLog)
+        env.assertOld()
+    }
+
+    /** Остатки есть, ядро работает: файлы не трогаем — тот же отказ, что у замены. */
+    @Test fun recoverGuardedRefusedWhileEngineRuns() {
+        val env = Env()
+        env.swap.stash(newFp)
+        env.running = true
+        val r = env.registration().recoverGuarded(env.stored)
+        assertTrue("$r", r.exceptionOrNull() is IdentityRegistration.EngineStillRunning)
+        assertEquals(newFp, env.swap.pendingFingerprint())
+        assertEquals(listOf("close", "open"), env.gateLog)
+    }
+
+    @Test fun recoverGuardedRestoreFailureIsRestoreFailed() {
+        val env = Env()
+        env.swap.stash(newFp)
+        env.failDelete = { it == env.swap.pendingFile }
+        val r = env.registration().recoverGuarded(env.stored)
+        assertTrue("$r", r.exceptionOrNull() is IdentityRegistration.RestoreFailed)
+        assertFalse(env.gateClosed)
+    }
+
     @Test fun nothingToRecover() {
         val env = Env()
         assertNull(IdentityRegistration.recover(env.swap, oldFp))

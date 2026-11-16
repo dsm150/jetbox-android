@@ -227,8 +227,14 @@ class JetBoxOnboarding(
         // (его группы) не применит. Повтор той же ссылки — прежний ключ.
         val fresh = JetBoxIdentity.plan(current, payload, engine.hasDeviceConfig()) == JetBoxIdentity.Plan.FRESH
         if (fresh) log("JetBox: новая ссылка — регистрируем новую личность устройства")
+        // Остатки оборванной замены регистрация разбирает первой (и при прежнем ключе) — только при
+        // остановленном ядре: файлы профиля нельзя менять под ним.
+        val unfinished = engine.hasUnfinishedSwap()
+        if (unfinished) log("JetBox: остатки оборванной замены подключения — разберём перед входом")
         var wasUp = false
-        if ((switching || fresh) && (engine.isRunning() || engine.state.value != VpnDisplayState.DISCONNECTED)) {
+        if ((switching || fresh || unfinished) &&
+            (engine.isRunning() || engine.state.value != VpnDisplayState.DISCONNECTED)
+        ) {
             wasUp = true
             log("JetBox: замена подключения — останавливаем прежний туннель")
             engine.stop()
@@ -253,7 +259,8 @@ class JetBoxOnboarding(
             }
         } catch (e: CancellationException) {
             // Сценарий отменён посреди регистрации (новая ссылка, «Закрыть»): файлы профиля уже
-            // вернул engine.register — прежний туннель поднимаем, раз мы его гасили.
+            // вернул engine.register — прежний туннель поднимаем, раз мы его гасили. Вернул не до
+            // конца — не поднимаем; шаг не трогаем: его уже задал тот, кто отменил.
             if (wasUp) withContext(NonCancellable) { restartPrevious("сценарий отменён") }
             throw e
         }
@@ -264,7 +271,10 @@ class JetBoxOnboarding(
                 _step.value = Step.Failed(JetBoxFailure.Other(e.message ?: ""))
                 return
             }
-            if (wasUp) restartPrevious("переключение не удалось")
+            if (wasUp && !restartPrevious("переключение не удалось")) {
+                _step.value = Step.Failed(JetBoxFailure.Other(RESTORE_INCOMPLETE))
+                return
+            }
             _step.value = Step.Failed(
                 if (e is IdentityRegistration.EngineStillRunning) JetBoxFailure.TunnelFailed
                 else JetBoxFailure.classify(e.message, engine.isOnline()),
@@ -311,11 +321,17 @@ class JetBoxOnboarding(
 
     /**
      * Прежние файлы профиля (или адрес сервера) уже вернул `engine.register` — поднимаем прежний
-     * JetBox, если согласие на VPN есть.
+     * JetBox, если согласие на VPN есть. На диске остатки оборванной замены (возврат не удался) —
+     * `false`, туннель не поднимаем: ни прежней, ни новой личности целиком нет.
      */
-    private fun restartPrevious(why: String) {
+    private suspend fun restartPrevious(why: String): Boolean {
+        if (engine.hasUnfinishedSwap()) {
+            log("JetBox: $why, а прежние файлы профиля вернулись не до конца — туннель не поднимаем")
+            return false
+        }
         log("JetBox: $why — возвращаем прежний JetBox")
         if (engine.needsVpnConsent() == null) engine.start()
+        return true
     }
 
     /**
@@ -451,6 +467,8 @@ class JetBoxOnboarding(
         private const val ROUTES_POLL_MS = 900L
         private const val SELECT_SETTLE_MS = 700L
         private const val STOP_POLL_MS = 200L
+        private const val RESTORE_INCOMPLETE =
+            "не удалось вернуть прежнее подключение: файлы профиля вернулись не до конца"
         private val START_LABELS = setOf(EngineApi.VPN_PERMISSION_REQUIRED, EngineApi.FOREGROUND_START_NOT_ALLOWED)
     }
 }

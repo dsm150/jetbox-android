@@ -149,6 +149,31 @@ class ProfileFilesSwapTest {
         assertEquals(emptyList<File>(), ProfileFilesSwap.findPending(dir))
     }
 
+    /**
+     * Метка записана с другим написанием того же каталога (`/data/user/0/…` против `/data/data/…`):
+     * файлы ищутся по имени рядом с меткой, а не откатом на один конфиг.
+     */
+    @Test fun fromPendingMatchesFilesByNameNotAbsolutePath() {
+        cfg.writeBytes(oldCfg)
+        state.writeBytes(oldState)
+        swap().stash(fp)
+        cfg.writeText("crashed attempt")
+        val pending = File(dir, "netbird.cfg" + ProfileFilesSwap.PENDING_SUFFIX)
+        val other = "/data/user/0/net.jetnet.jetbox/files"
+        pending.writeText(
+            "{\"keyFingerprint\":\"$fp\",\"files\":[\"$other/netbird.cfg\",\"$other/state.json\",\"$other/netbird.account.json\"]}",
+        )
+        val logs = mutableListOf<String>()
+        val again = ProfileFilesSwap.fromPending(pending) { logs += it }
+        assertEquals(fp, again.pendingFingerprint())
+        again.restore()
+        assertArrayEquals(oldCfg, cfg.readBytes())
+        assertArrayEquals(oldState, state.readBytes())
+        assertFalse(account.exists())
+        assertEquals(emptyList<File>(), leftovers())
+        assertTrue("расхождение каталога — в журнал", logs.any { it.contains(other) })
+    }
+
     @Test fun unreadablePendingFallsBackToConfigAndIsRemoved() {
         cfg.writeBytes(oldCfg)
         val pending = File(dir, "netbird.cfg" + ProfileFilesSwap.PENDING_SUFFIX).apply { writeText("{оборвано") }
