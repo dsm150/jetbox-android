@@ -23,6 +23,10 @@ class WidgetLogicTest {
     @Test fun noVpnConsentOpensApp() {
         VpnDisplayState.entries.forEach { s ->
             assertEquals(WidgetTap.OPEN_APP, widgetTap(hasBox = true, consentGranted = false, state = s))
+            assertEquals(
+                "идёт замена подключения — ядро не запустится, открываем приложение",
+                WidgetTap.OPEN_APP, widgetTap(hasBox = true, consentGranted = true, state = s, identitySwap = true),
+            )
         }
     }
 

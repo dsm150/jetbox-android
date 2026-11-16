@@ -54,4 +54,17 @@ class JetBoxIdentityTest {
         assertEquals(Plan.REUSE, JetBoxIdentity.plan(box(fp = null), link(k = keyB), configExists = true))
         assertEquals(Plan.FRESH, JetBoxIdentity.plan(box(fp = null, e = "other"), link(), configExists = true))
     }
+
+    /** Запись ≤ 1.0.2 без `e` + своя облачная ссылка с `t` — формула 1.0.2 `хост|e`: ключ прежний. */
+    @Test fun legacyRecordAndOwnCloudLinkKeepsKey() {
+        val legacy = JetBoxBox("https://netbird.jet-net.net", null, null, "Тариф", 1L)
+        val cloud = (JetBoxLink.parse("jetbox://connect#k=$keyA&m=https://netbird.jet-net.net&n=Тариф&t=tok")
+            as JetBoxLink.Outcome.Payload).payload
+        assertEquals(Plan.REUSE, JetBoxIdentity.plan(legacy, cloud, configExists = true))
+    }
+
+    @Test fun tokenFingerprintKeepsCase() {
+        assertNotEquals(net.jetnet.jetbox.link.secretFingerprint("Tok"), net.jetnet.jetbox.link.secretFingerprint("tok"))
+        assertEquals(JetBoxIdentity.fingerprint(keyA), net.jetnet.jetbox.link.secretFingerprint(keyA.lowercase()))
+    }
 }

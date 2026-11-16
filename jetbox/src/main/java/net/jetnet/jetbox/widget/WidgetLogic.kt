@@ -19,6 +19,8 @@ fun widgetStateIsStale(saved: VpnDisplayState, engineRunning: Boolean, serviceFo
 
 /**
  * Решение по касанию (чистая логика, без Android):
+ * * идёт замена подключения ([identitySwap]: регистрация с новой личностью) — открыть приложение:
+ *   ядро сейчас не запустится, а окно покажет, что происходит;
  * * JetBox на телефоне не прописан или нет согласия VPN — открыть приложение (iOS: `needsAppSetup` →
  *   `netbird://connect`): без окна туннель в этих случаях не включить;
  * * туннель работает или поднимается — выключить (iOS в «Подключаем…» касание глотает; у нас оно
@@ -37,8 +39,9 @@ fun widgetTap(
     state: VpnDisplayState,
     engineRunning: Boolean = false,
     stale: Boolean = false,
+    identitySwap: Boolean = false,
 ): WidgetTap = when {
-    !hasBox || !consentGranted -> WidgetTap.OPEN_APP
+    identitySwap || !hasBox || !consentGranted -> WidgetTap.OPEN_APP
     stale -> WidgetTap.REFRESH
     state == VpnDisplayState.CONNECTED || state == VpnDisplayState.CONNECTING -> WidgetTap.STOP
     state == VpnDisplayState.DISCONNECTED && engineRunning -> WidgetTap.STOP

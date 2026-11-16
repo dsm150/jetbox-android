@@ -1,9 +1,11 @@
 package net.jetnet.jetbox.engine
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,6 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import net.jetnet.jetbox.link.JetBoxLink
 import net.jetnet.jetbox.link.JetBoxLinkPayload
@@ -36,9 +39,13 @@ import net.jetnet.jetbox.store.JetBoxStore
  * - туннель ждём не только по CONNECTED: ошибка ядра или «нужен вход» на шаге Connecting —
  *   сразу отказ, без 45 секунд ожидания;
  * - переключение на другой JetBox или вход с новой личностью останавливает прежний туннель до
- *   регистрации; если регистрация не удалась — `AndroidEngine.register` возвращает прежние файлы
- *   профиля ядра (новая личность) или адрес сервера, а прежний туннель поднимается снова (если он
- *   был поднят и согласие на VPN есть);
+ *   регистрации; если регистрация не удалась или сценарий отменён — `AndroidEngine.register`
+ *   возвращает прежние файлы профиля ядра (новая личность) или адрес сервера, а прежний туннель
+ *   поднимается снова (если он был поднят и согласие на VPN есть). Прежние файлы не вернулись
+ *   ([IdentityRegistration.RestoreFailed]) — туннель не поднимаем: «Попробовать снова» начнёт с
+ *   возврата;
+ * - хранилище пишет `engine.register` колбэком — после входа, до фиксации файлов профиля
+ *   ([IdentityRegistration]): так смерть процесса между ними разбирается при старте;
  * - новая личность (новый ключ WireGuard) — по отпечатку setup key, [JetBoxIdentity.plan]: экран
  *   «Другой JetBox» решает удостоверение подключения, ключ — отпечаток (новая ссылка того же
  *   подключения входит с новым ключом без вопроса);
@@ -131,7 +138,7 @@ class JetBoxOnboarding(
                 lastPayload = payload
 
                 val box = store.currentBox
-                if (box != null && box.identity != payload.boxIdentity) {
+                if (box != null && !box.isSameConnection(payload)) {
                     _step.value = Step.ConfirmSwitch(payload, box.displayName)
                 } else {
                     // Тот же JetBox: имя из ссылки свежее — запоминаем сразу, даже если клиент
@@ -213,9 +220,9 @@ class JetBoxOnboarding(
 
         // Android: туннель прежнего JetBox гасим до регистрации, иначе start() застанет ядро
         // запущенным со старым конфигом (а при новой личности файлы профиля уходят из-под него).
-        // Хранилище не трогаем до успеха.
+        // Хранилище пишет engine.register колбэком — только после успешного входа.
         val current = store.currentBox
-        val switching = current != null && current.identity != payload.boxIdentity
+        val switching = current != null && !current.isSameConnection(payload)
         // Новая ссылка — новый ключ WireGuard: иначе management узнает прежний пир и setup key
         // (его группы) не применит. Повтор той же ссылки — прежний ключ.
         val fresh = JetBoxIdentity.plan(current, payload, engine.hasDeviceConfig()) == JetBoxIdentity.Plan.FRESH
@@ -240,18 +247,30 @@ class JetBoxOnboarding(
             }
         }
 
-        val registered = engine.register(payload.managementURL, payload.setupKey, freshIdentity = fresh)
-        registered.exceptionOrNull()?.let { e ->
-            if (wasUp) {
-                // Прежние файлы профиля (или адрес сервера) уже вернул engine.register; поднимаем
-                // прежний JetBox.
-                log("JetBox: переключение не удалось — возвращаем прежний JetBox")
-                if (engine.needsVpnConsent() == null) engine.start()
+        val registered = try {
+            engine.register(payload.managementURL, payload.setupKey, freshIdentity = fresh) {
+                store.remember(payload, clock())
             }
-            _step.value = Step.Failed(JetBoxFailure.classify(e.message, engine.isOnline()))
+        } catch (e: CancellationException) {
+            // Сценарий отменён посреди регистрации (новая ссылка, «Закрыть»): файлы профиля уже
+            // вернул engine.register — прежний туннель поднимаем, раз мы его гасили.
+            if (wasUp) withContext(NonCancellable) { restartPrevious("сценарий отменён") }
+            throw e
+        }
+        registered.exceptionOrNull()?.let { e ->
+            if (e is IdentityRegistration.RestoreFailed) {
+                // На диске ни прежняя, ни новая личность — туннель не поднимаем.
+                log("JetBox: прежнее подключение не вернулось: ${e.message}")
+                _step.value = Step.Failed(JetBoxFailure.Other(e.message ?: ""))
+                return
+            }
+            if (wasUp) restartPrevious("переключение не удалось")
+            _step.value = Step.Failed(
+                if (e is IdentityRegistration.EngineStillRunning) JetBoxFailure.TunnelFailed
+                else JetBoxFailure.classify(e.message, engine.isOnline()),
+            )
             return
         }
-        store.remember(payload, clock())
         log("JetBox: устройство зарегистрировано на объекте")
 
         // 3. Android: системное согласие на VPN.
@@ -288,6 +307,15 @@ class JetBoxOnboarding(
             }
             ExitOutcome.None -> _step.value = Step.Protected(null)
         }
+    }
+
+    /**
+     * Прежние файлы профиля (или адрес сервера) уже вернул `engine.register` — поднимаем прежний
+     * JetBox, если согласие на VPN есть.
+     */
+    private fun restartPrevious(why: String) {
+        log("JetBox: $why — возвращаем прежний JetBox")
+        if (engine.needsVpnConsent() == null) engine.start()
     }
 
     /**

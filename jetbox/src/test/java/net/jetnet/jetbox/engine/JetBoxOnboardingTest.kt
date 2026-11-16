@@ -61,6 +61,10 @@ class JetBoxOnboardingTest {
         val kv = MemoryStore()
         val store = JetBoxStore(kv)
         val logs = mutableListOf<String>()
+        init {
+            // Остатки замены IdentityRegistration разбирает по отпечатку в хранилище сценария.
+            engine.storedFingerprint = { store.currentBox?.setupKeyFingerprint }
+        }
         val ob = JetBoxOnboarding(
             // Не backgroundScope: его работу advanceUntilIdle не крутит. Своя SupervisorJob — чтобы
             // runTest не ждал сценарий, оставленный висеть (например, на согласии VPN).
@@ -718,7 +722,7 @@ class JetBoxOnboardingTest {
     /** Телефон зарегистрирован по ссылке [link] (как после успешного сценария), туннель поднят. */
     private fun Env.registeredBy(link: String, running: Boolean = true) {
         store.remember(payload(link), 1L)
-        engine.configExists = true
+        engine.configFile.writeText("key=" + payload(link).setupKey)
         if (running) {
             engine.emit(VpnDisplayState.CONNECTED)
             engine.onStop = { it.emit(VpnDisplayState.DISCONNECTED) }
@@ -736,6 +740,7 @@ class JetBoxOnboardingTest {
         assertEquals(Step.Protected("home-exit"), env.ob.step.value)
         assertEquals(listOf(false), env.engine.registerFreshIdentity)
         assertEquals("повтор своей ссылки туннель не гасит", 0, env.engine.stopCalls)
+        assertEquals("ключ устройства прежний", "key=$key", env.engine.deviceKey())
     }
 
     @Test fun newKeyForSameConnectionRegistersFreshWithoutConfirm() = runTest {
@@ -750,6 +755,8 @@ class JetBoxOnboardingTest {
         assertEquals(listOf(true), env.engine.registerFreshIdentity)
         assertEquals("файлы профиля уходят из-под туннеля — он остановлен", 1, env.engine.stopCalls)
         assertEquals(JetBoxIdentity.fingerprint(otherKey), env.store.currentBox?.setupKeyFingerprint)
+        assertEquals("ядро создало новый конфиг — новый ключ", "key=$otherKey", env.engine.deviceKey())
+        assertFalse("остатков замены нет", env.engine.swap().hasLeftovers())
         assertTrue(env.logs.any { it.contains("новую личность устройства") })
         assertFalse("ключ в журнал не попадает", env.logs.any { it.contains(otherKey) })
     }
@@ -788,6 +795,7 @@ class JetBoxOnboardingTest {
     }
 
     @Test fun recordWithoutFingerprintFollowsConnectionIdentity() = runTest {
+        // (Запись 1.0.2 знает только хост|e — см. legacyRecordAndOwnCloudLinkWithToken.)
         // Запись сборки до 1.0.3: отпечатка нет. Тот же JetBox — прежний ключ (как iOS).
         val env = env()
         env.store.currentBox = JetBoxBox("https://nb.example.net", "home-exit", "home-exit", "Дом", 1L)
@@ -814,6 +822,7 @@ class JetBoxOnboardingTest {
         val env = env()
         env.registeredBy(url(m = "https://old.example.net", e = "old-exit", n = "Старый"))
         val before = env.store.currentBox
+        assertEquals("key=$key", env.engine.deviceKey())
         env.engine.registerResult = Result.failure(Exception("invalid setup key"))
         env.ob.handle(url(k = otherKey))
         env.ob.confirmSwitch()
@@ -822,7 +831,8 @@ class JetBoxOnboardingTest {
         val step = env.ob.step.value
         assertTrue("$step", step is Step.Failed && step.failure is JetBoxFailure.KeyRejected)
         assertEquals(listOf(true), env.engine.registerFreshIdentity)
-        assertEquals("движок вернул прежние файлы профиля", 1, env.engine.restoredIdentityFiles)
+        assertEquals("прежние файлы профиля возвращены", "key=$key", env.engine.deviceKey())
+        assertFalse(env.engine.swap().hasLeftovers())
         assertEquals(1, env.engine.stopCalls)
         assertEquals("прежний туннель поднят снова", 1, env.engine.startCalls)
         assertEquals(before, env.store.currentBox)
@@ -843,6 +853,115 @@ class JetBoxOnboardingTest {
         assertEquals(listOf(true), env.engine.registerFreshIdentity)
         assertEquals(Step.Protected("home-exit"), env.ob.step.value)
         assertFalse("токен в журнал не попадает", env.logs.any { it.contains("tok-2") })
+    }
+
+    /** Запись 1.0.2 (без отпечатка и токена) + своя облачная ссылка с `t`: тот же JetBox, ключ прежний. */
+    @Test fun legacyRecordAndOwnCloudLinkWithToken() = runTest {
+        val env = env()
+        val cloud = url(m = "https://netbird.jet-net.net", e = null, n = "Тариф", t = "tok-1")
+        env.store.currentBox = JetBoxBox("https://netbird.jet-net.net", null, null, "Тариф", 1L)
+        env.engine.configFile.writeText("key=OLD")
+        env.tunnelComesUp(listOf(exit))
+        env.ob.handle(cloud)
+        assertEquals("без экрана «Другой JetBox»", Step.Ready(payload(cloud)), env.ob.step.value)
+        env.ob.connect()
+        advanceUntilIdle()
+        assertEquals(listOf(false), env.engine.registerFreshIdentity)
+        assertEquals("ключ сохранён", "key=OLD", env.engine.deviceKey())
+        // Запись переписана по-новому: отпечаток ключа и токена, сам токен не хранится.
+        val box = env.store.currentBox!!
+        assertEquals(JetBoxIdentity.fingerprint(key), box.setupKeyFingerprint)
+        assertEquals(payload(cloud).deviceTokenHash, box.deviceTokenHash)
+        assertFalse(env.kv.getString("jetbox.currentBox")!!.contains("tok-1"))
+    }
+
+    /** Отмена посреди входа с новой личностью: файлы прежние, прежний туннель поднят снова. */
+    @Test fun cancelDuringFreshRegistrationRestoresAndRaisesOldTunnel() = runTest {
+        val env = env()
+        env.registeredBy(url(m = "https://old.example.net", e = "old-exit", n = "Старый"))
+        val before = env.store.currentBox
+        val gate = CompletableDeferred<Unit>()
+        env.engine.registerGate = gate
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        runCurrent()
+        assertTrue(env.engine.gateClosed)
+        assertEquals("ядро уже пишет новый конфиг", "key=$otherKey", env.engine.deviceKey())
+
+        env.ob.dismiss()
+        advanceUntilIdle()
+        assertEquals(Step.Idle, env.ob.step.value)
+        assertEquals("прежняя личность", "key=$key", env.engine.deviceKey())
+        assertFalse(env.engine.swap().hasLeftovers())
+        assertFalse(env.engine.gateClosed)
+        assertEquals(before, env.store.currentBox)
+        assertEquals("прежний туннель поднят снова", 1, env.engine.startCalls)
+        assertEquals(VpnDisplayState.CONNECTED, env.engine.state.value)
+    }
+
+    /** Прежние файлы не вернулись: отдельная ошибка, туннель не поднимаем; повтор начинает с возврата. */
+    @Test fun restoreFailureShowsOwnErrorAndRetryRestoresFirst() = runTest {
+        val env = env()
+        env.registeredBy(url(m = "https://old.example.net", e = "old-exit", n = "Старый"))
+        env.engine.registerResult = Result.failure(Exception("invalid setup key"))
+        // Состояния не было, ядро его создаст, а при откате удалить его «не получится».
+        val gate = CompletableDeferred<Unit>()
+        env.engine.registerGate = gate
+        val state = env.engine.stateFile
+        env.engine.failDelete = { it == state }
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        runCurrent()
+        state.writeText("core state") // ядро посреди входа создало состояние
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        val step = env.ob.step.value
+        assertTrue("$step", step is Step.Failed && step.failure is JetBoxFailure.Other)
+        assertTrue((step as Step.Failed).failure.details!!.contains("прежнее подключение"))
+        assertTrue(step.failure.canRetry)
+        assertEquals("туннель не поднят", 0, env.engine.startCalls)
+        assertTrue(env.engine.swap().hasLeftovers())
+
+        env.engine.failDelete = { false }
+        env.engine.registerResult = Result.success(Unit)
+        env.ob.retry()
+        advanceUntilIdle()
+        assertEquals(Step.Protected("home-exit"), env.ob.step.value)
+        assertEquals("key=$otherKey", env.engine.deviceKey())
+        assertFalse(state.exists())
+        assertFalse(env.engine.swap().hasLeftovers())
+    }
+
+    /** Виджет, плитка, always-on во время замены: запуск ядра закрыт. */
+    @Test fun startDuringFreshRegistrationIsRefused() = runTest {
+        val env = env()
+        env.registeredBy(url(m = "https://old.example.net", e = "old-exit", n = "Старый"))
+        val gate = CompletableDeferred<Unit>()
+        env.engine.registerGate = gate
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        runCurrent()
+        env.engine.start() // касание виджета посреди NewAuth
+        assertEquals(1, env.engine.refusedStarts)
+        assertEquals(0, env.engine.startCalls)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(Step.Protected("home-exit"), env.ob.step.value)
+        assertEquals(1, env.engine.startCalls)
+    }
+
+    /** Ядро ещё работает к моменту замены (не остановилось) — файлы не трогаем, прежний туннель жив. */
+    @Test fun freshRegistrationRefusedWhileEngineRuns() = runTest {
+        val env = env()
+        env.registeredBy(url(m = "https://old.example.net", e = "old-exit", n = "Старый"), running = false)
+        env.engine.running = true
+        env.engine.onStop = { } // остановка «не доходит»
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        advanceUntilIdle()
+        assertEquals(Step.Failed(JetBoxFailure.TunnelFailed), env.ob.step.value)
+        assertEquals("key=$key", env.engine.deviceKey())
     }
 
     // endregion

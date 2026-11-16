@@ -5,7 +5,7 @@ import net.jetnet.jetbox.logic.JetBoxIdentity
 
 /**
  * Что приложение помнит между запусками: какой JetBox прописан на этом телефоне —
- * порт `JetBoxStore.swift` (iOS). Setup key здесь не хранится — только его отпечаток.
+ * порт `JetBoxStore.swift` (iOS). Setup key и токен устройства здесь не хранятся — только отпечатки.
  */
 class JetBoxStore(private val kv: KeyValueStore) {
 
@@ -21,7 +21,7 @@ class JetBoxStore(private val kv: KeyValueStore) {
             selectedExitNode = payload.exitNodeName,
             boxName = payload.boxName,
             registeredAtMillis = nowMillis,
-            deviceToken = payload.deviceToken,
+            deviceTokenHash = payload.deviceTokenHash,
             setupKeyFingerprint = JetBoxIdentity.fingerprint(payload.setupKey),
         )
     }

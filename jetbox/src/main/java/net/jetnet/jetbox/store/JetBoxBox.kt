@@ -3,7 +3,7 @@ package net.jetnet.jetbox.store
 import net.jetnet.jetbox.link.JetBoxLinkPayload
 import net.jetnet.jetbox.link.boxIdentityOf
 import net.jetnet.jetbox.link.hostOf
-import net.jetnet.jetbox.link.maskSecret
+import net.jetnet.jetbox.link.legacyBoxIdentityOf
 import org.json.JSONObject
 
 /**
@@ -19,11 +19,15 @@ data class JetBoxBox(
     val boxName: String?,
     /** Момент регистрации, миллисекунды Unix-эпохи. */
     val registeredAtMillis: Long,
-    /** Токен устройства из облачной ссылки (`t=`). Часть удостоверения; в журнал не выводится. */
-    val deviceToken: String? = null,
+    /**
+     * Отпечаток токена устройства из облачной ссылки (`t=`, `JetBoxLinkPayload.deviceTokenHash`):
+     * часть удостоверения. Сам токен не хранится.
+     */
+    val deviceTokenHash: String? = null,
     /**
      * Отпечаток setup key, по которому телефон зарегистрирован (`JetBoxIdentity.fingerprint`), сам
-     * ключ не хранится. `null` — запись сделана сборкой до 1.0.3.
+     * ключ не хранится. `null` — запись сделана сборкой ≤ 1.0.2: сравнение по её формуле
+     * ([isSameConnection]).
      */
     val setupKeyFingerprint: String? = null,
 ) {
@@ -38,14 +42,27 @@ data class JetBoxBox(
 
     /** Та же формула, что у `JetBoxLinkPayload.boxIdentity` (одна функция на двоих). */
     val identity: String
-        get() = boxIdentityOf(managementURL, exitNodeName, deviceToken, boxName)
+        get() = boxIdentityOf(managementURL, exitNodeName, deviceTokenHash, boxName)
+
+    /** Запись сборки ≤ 1.0.2: нет отпечатка ключа (и не было ни `t`, ни правила про имя). */
+    val isLegacy: Boolean
+        get() = setupKeyFingerprint == null
+
+    /**
+     * Ссылка ведёт на это же подключение — экрана «Другой JetBox» не будет. Запись ≤ 1.0.2 —
+     * по её формуле `хост|(e ?: "")` (как iOS): своя облачная ссылка с `t` — тот же JetBox.
+     */
+    fun isSameConnection(payload: JetBoxLinkPayload): Boolean =
+        if (isLegacy) legacyBoxIdentityOf(managementURL, exitNodeName) == payload.legacyBoxIdentity
+        else identity == payload.boxIdentity
 
     /**
      * Имя дома из свежей ссылки того же JetBox. `null` — менять нечего
-     * (другой JetBox, в ссылке нет имени или оно то же).
+     * (другой JetBox, в ссылке нет имени или оно то же). Для ссылок без `e` и `t` имя входит в
+     * удостоверение — новое имя там уже «Другой JetBox», сюда не доходит.
      */
     fun renamed(by: JetBoxLinkPayload): JetBoxBox? {
-        if (by.boxIdentity != identity) return null
+        if (!isSameConnection(by)) return null
         val name = by.boxName
         if (name.isNullOrEmpty() || name == boxName) return null
         return copy(boxName = name)
@@ -57,14 +74,14 @@ data class JetBoxBox(
         put(K_SELECTED, selectedExitNode ?: JSONObject.NULL)
         put(K_NAME, boxName ?: JSONObject.NULL)
         put(K_REGISTERED, registeredAtMillis)
-        put(K_TOKEN, deviceToken ?: JSONObject.NULL)
+        put(K_TOKEN_HASH, deviceTokenHash ?: JSONObject.NULL)
         put(K_FINGERPRINT, setupKeyFingerprint ?: JSONObject.NULL)
     }.toString()
 
-    // Токен устройства не должен попасть в журнал через toString().
+    // Отпечатки в журнал — только началом.
     override fun toString(): String =
         "JetBoxBox(managementURL=$managementURL, exitNodeName=$exitNodeName, selectedExitNode=$selectedExitNode, " +
-            "boxName=$boxName, registeredAtMillis=$registeredAtMillis, deviceToken=${deviceToken?.let(::maskSecret)}, " +
+            "boxName=$boxName, registeredAtMillis=$registeredAtMillis, deviceTokenHash=${deviceTokenHash?.take(8)}, " +
             "setupKeyFingerprint=${setupKeyFingerprint?.take(8)})"
 
     companion object {
@@ -73,7 +90,7 @@ data class JetBoxBox(
         private const val K_SELECTED = "selectedExitNode"
         private const val K_NAME = "boxName"
         private const val K_REGISTERED = "registeredAtMillis"
-        private const val K_TOKEN = "deviceToken"
+        private const val K_TOKEN_HASH = "deviceTokenHash"
         private const val K_FINGERPRINT = "keyFingerprint" // не «setupKey…»: на диске нет ничего, похожего на ключ
 
         /** Битый или неполный JSON — `null`. */
@@ -85,7 +102,7 @@ data class JetBoxBox(
                 selectedExitNode = o.optStringOrNull(K_SELECTED),
                 boxName = o.optStringOrNull(K_NAME),
                 registeredAtMillis = o.getLong(K_REGISTERED),
-                deviceToken = o.optStringOrNull(K_TOKEN),
+                deviceTokenHash = o.optStringOrNull(K_TOKEN_HASH),
                 setupKeyFingerprint = o.optStringOrNull(K_FINGERPRINT),
             )
         }.getOrNull()

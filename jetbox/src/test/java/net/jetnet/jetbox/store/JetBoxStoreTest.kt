@@ -179,31 +179,34 @@ class JetBoxStoreTest {
         val store = JetBoxStore(MemoryStore())
         store.remember(payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=Tariff&t=dev-token-1"), 5L)
         val b = store.currentBox!!
-        assertEquals("dev-token-1", b.deviceToken)
+        // Токен — только отпечатком: SHA-256 «dev-token-1», первые 16 байт hex (python hashlib).
+        assertEquals("0c4f7aa2e2cc6e49b1ce7d8c9acb511d", b.deviceTokenHash)
         assertEquals("cf4c4732fd3b8f8a55b60871950a2f22", b.setupKeyFingerprint)
         assertFalse(b.toJson().contains(key))
-        assertFalse("токен в toString — только маской", b.toString().contains("dev-token-1"))
+        assertFalse("токен на диске не хранится", b.toJson().contains("dev-token-1"))
+        assertFalse(b.toString().contains("dev-token-1"))
     }
 
     @Test fun jsonRoundTripWithTokenAndFingerprint() {
-        val b = box().copy(deviceToken = "tok", setupKeyFingerprint = "ab".repeat(16))
+        val b = box().copy(deviceTokenHash = "cd".repeat(16), setupKeyFingerprint = "ab".repeat(16))
         assertEquals(b, JetBoxBox.fromJson(b.toJson()))
     }
 
     @Test fun recordOfOlderBuildHasNoTokenOrFingerprint() {
         val old = """{"managementURL":"https://mgmt.example.net","exitNodeName":"one","selectedExitNode":"one","boxName":"Дом","registeredAtMillis":1}"""
         val b = JetBoxBox.fromJson(old)!!
-        assertNull(b.deviceToken)
+        assertNull(b.deviceTokenHash)
         assertNull(b.setupKeyFingerprint)
+        assertTrue(b.isLegacy)
         assertEquals(box(at = 1L), b)
     }
 
     @Test fun identityRuleOfContract12() {
-        val e = box(exit = "one").copy(deviceToken = "t1")
+        val e = box(exit = "one").copy(deviceTokenHash = "t1")
         assertEquals("выход важнее токена", "mgmt.example.net|one", e.identity)
-        val t1 = box(exit = null).copy(deviceToken = "t1")
+        val t1 = box(exit = null).copy(deviceTokenHash = "t1")
         assertEquals(t1.identity, t1.copy(boxName = "Другой тариф").identity)
-        assertNotEquals(t1.identity, t1.copy(deviceToken = "t2").identity)
+        assertNotEquals(t1.identity, t1.copy(deviceTokenHash = "t2").identity)
         assertNotEquals(t1.identity, box(exit = null).identity)
         val legacy = box(exit = null)
         assertEquals(legacy.identity, box(exit = null, selected = null).identity)
@@ -216,6 +219,26 @@ class JetBoxStoreTest {
         val store = JetBoxStore(MemoryStore())
         store.remember(p, 1L)
         assertEquals(p.boxIdentity, store.currentBox!!.identity)
+        assertTrue(store.currentBox!!.isSameConnection(p))
+        assertFalse("в удостоверении — отпечаток, не токен", p.boxIdentity.contains("tok"))
+    }
+
+    /** Запись ≤ 1.0.2 сравнивается по формуле 1.0.2 `хост|(e ?: "")`, как запасная ветка iOS. */
+    @Test fun legacyRecordUsesFormulaOf102() {
+        val legacy = JetBoxBox("https://netbird.jet-net.net", null, null, "Тариф", 1L)
+        assertTrue(legacy.isLegacy)
+        val ownCloud = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=Тариф&t=tok")
+        assertTrue("своя облачная ссылка с t — тот же JetBox", legacy.isSameConnection(ownCloud))
+        val renamed = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=Другое")
+        assertTrue("1.0.2 имени не сравнивала", legacy.isSameConnection(renamed))
+        assertEquals("Другое", legacy.renamed(renamed)?.boxName)
+        assertFalse(legacy.isSameConnection(payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=exit")))
+        assertFalse(legacy.isSameConnection(payload("jetbox://connect#k=$key&m=https://other.example.net")))
+
+        // Новая запись без e и t: имя — часть удостоверения, renamed() не действует.
+        val modern = legacy.copy(setupKeyFingerprint = "ab".repeat(16))
+        assertFalse(modern.isSameConnection(renamed))
+        assertNull(modern.renamed(renamed))
     }
 
     // endregion

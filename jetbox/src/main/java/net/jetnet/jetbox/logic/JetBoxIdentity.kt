@@ -2,8 +2,8 @@ package net.jetnet.jetbox.logic
 
 import net.jetnet.jetbox.link.JetBoxLinkPayload
 import net.jetnet.jetbox.link.hostOf
+import net.jetnet.jetbox.link.secretFingerprint
 import net.jetnet.jetbox.store.JetBoxBox
-import java.security.MessageDigest
 import java.util.Locale
 
 /**
@@ -37,19 +37,16 @@ object JetBoxIdentity {
         if (managementHost(current.managementURL) != managementHost(payload.managementURL)) return Plan.FRESH
         val known = current.setupKeyFingerprint
         if (known != null) return if (known == fingerprint(payload.setupKey)) Plan.REUSE else Plan.FRESH
-        // Запись сделана сборкой до 1.0.3, отпечатка ключа в ней нет.
-        return if (current.identity == payload.boxIdentity) Plan.REUSE else Plan.FRESH
+        // Запись сделана сборкой ≤ 1.0.2, отпечатка ключа в ней нет: тот же JetBox по формуле 1.0.2
+        // (`хост|e`, как запасная ветка iOS) — прежний ключ, иначе новый.
+        return if (current.isSameConnection(payload)) Plan.REUSE else Plan.FRESH
     }
 
     /**
      * Отпечаток setup key: по нему отличаем «та же ссылка» от «новая ссылка», не храня сам секрет.
      * Как iOS: SHA-256 ключа в нижнем регистре, первые 16 байт в hex (32 символа).
      */
-    fun fingerprint(setupKey: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(setupKey.lowercase(Locale.ROOT).toByteArray(Charsets.UTF_8))
-            .take(16)
-            .joinToString("") { "%02x".format(it) }
+    fun fingerprint(setupKey: String): String = secretFingerprint(setupKey.lowercase(Locale.ROOT))
 
     private fun managementHost(url: String): String = hostOf(url).lowercase(Locale.ROOT)
 }

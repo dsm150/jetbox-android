@@ -15,7 +15,7 @@ class JetBoxEngineTest {
             registerResult = Result.failure(Exception("invalid setup key"))
             onStart = { it.emit(VpnDisplayState.CONNECTED, nowMillis = 42L) }
         }
-        val r = e.register("https://m.example", "KEY", freshIdentity = false)
+        val r = e.register("https://m.example", "KEY", freshIdentity = false) {}
         assertEquals("invalid setup key", r.exceptionOrNull()?.message)
         e.start()
         assertEquals(1, e.startCalls)
@@ -32,7 +32,7 @@ class JetBoxEngineTest {
         val gate = CompletableDeferred<Unit>()
         val e = FakeEngine().apply { registerGate = gate; loginRequired = true }
         var done = false
-        val job = launch { e.register("https://m.example", "KEY", freshIdentity = false); done = true }
+        val job = launch { e.register("https://m.example", "KEY", freshIdentity = false) {}; done = true }
         testScheduler.advanceUntilIdle()
         assertFalse(done)
         gate.complete(Unit)

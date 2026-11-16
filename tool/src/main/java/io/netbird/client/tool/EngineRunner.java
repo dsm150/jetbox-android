@@ -147,6 +147,13 @@ class EngineRunner {
             Log.e(LOGTAG, "engine already running");
             return;
         }
+        // JetBox: идёт замена личности устройства — не запускать ядро поверх подменяемых файлов
+        // профиля; сервис, уже поднятый в foreground (always-on, виджет), отпускаем как при остановке.
+        if (VPNService.isIdentitySwapInProgress()) {
+            Log.w(LOGTAG, "identity swap in progress, engine start refused");
+            notifyServiceStateListeners(false);
+            return;
+        }
 
         // update the log levels based on the up to date user settings
         Preferences preferences = new Preferences(context);

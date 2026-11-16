@@ -308,6 +308,14 @@ class JetBoxLinkTest {
         assertNull(payload("jetbox://connect#k=$key&t=").deviceToken)
     }
 
+    @Test fun identityCarriesTokenFingerprintNotToken() {
+        val p = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&t=device-token-12345")
+        assertEquals(secretFingerprint("device-token-12345"), p.deviceTokenHash)
+        assertEquals("netbird.jet-net.net|t:${p.deviceTokenHash}", p.boxIdentity)
+        assertFalse(p.boxIdentity.contains("device-token"))
+        assertEquals("netbird.jet-net.net|", p.legacyBoxIdentity)
+    }
+
     @Test fun identityWithExitIgnoresTokenAndName() {
         val a = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=one&t=t1&n=A")
         val b = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=one&t=t2&n=B")
