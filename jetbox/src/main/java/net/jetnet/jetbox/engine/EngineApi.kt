@@ -45,10 +45,39 @@ interface EngineApi {
     /**
      * Регистрация устройства по setup-key: сохраняет адрес управления и конфиг ядра.
      * Ошибка — `Result.failure`, текст исключения — сообщение ядра (для `JetBoxFailure.classify`).
-     * Отмена корутины пробрасывается как `CancellationException`, но логин в Go не отменяется:
-     * пир может зарегистрироваться на сервере уже после отмены.
+     * Отмена корутины пробрасывается как `CancellationException` (файлы уже возвращены), но логин в
+     * Go не отменяется: пир может зарегистрироваться на сервере уже после отмены.
+     *
+     * [onRegistered] — запись хранилища (`store.remember`): после успешного входа, под замком
+     * регистрации, до фиксации файлов профиля, ровно один раз и без отмены. Не вызван — регистрации
+     * не было. Его исключение — неудача регистрации (с откатом).
+     *
+     * [freshIdentity] — регистрация с новой личностью устройства (новый ключ WireGuard),
+     * [IdentityRegistration]: запуск ядра закрыт на время замены (работает — отказ
+     * [IdentityRegistration.EngineStillRunning]), прежние файлы профиля откладываются; успех —
+     * [onRegistered], потом удаление копий; ошибка или отмена — файлы как были; не вернулись —
+     * [IdentityRegistration.RestoreFailed]. Иначе ключ сохраняется, а при неудаче откатывается
+     * только адрес сервера. Кто решает — `JetBoxIdentity.plan`.
      */
-    suspend fun register(managementURL: String, setupKey: String): Result<Unit>
+    suspend fun register(
+        managementURL: String,
+        setupKey: String,
+        freshIdentity: Boolean,
+        onRegistered: () -> Unit,
+    ): Result<Unit>
+
+    /**
+     * Есть ли у активного профиля личность устройства: конфиг ядра на месте или отложен оборванной
+     * заменой (тогда регистрация сначала вернёт прежний).
+     */
+    suspend fun hasDeviceConfig(): Boolean
+
+    /**
+     * Остались ли у активного профиля следы оборванной замены личности (метка, копии, маркеры):
+     * их разберёт следующий [register] — под закрытым запуском ядра и только при остановленном ядре.
+     * Сценарий по этому признаку гасит туннель и не поднимает прежний на полуразобранном диске.
+     */
+    suspend fun hasUnfinishedSwap(): Boolean
 
     /** Интент системного согласия на VPN (`VpnService.prepare`), `null` — согласие уже есть. */
     fun needsVpnConsent(): Intent?
@@ -59,7 +88,8 @@ interface EngineApi {
     /**
      * Поднять туннель без логина в браузере; если сервис ещё не привязан — после привязки.
      * Вызывать после `needsVpnConsent() == null`; без согласия — `lastError = VPN_PERMISSION_REQUIRED`
-     * и возврат; из фона на Android 12+ — `lastError = FOREGROUND_START_NOT_ALLOWED`. Звать из
+     * и возврат; из фона на Android 12+ — `lastError = FOREGROUND_START_NOT_ALLOWED`. Во время
+     * замены личности ([register] с `freshIdentity`) запуск отклоняется молча. Звать из
      * видимого окна (касание, ответ системного диалога) или после касания виджета/плитки.
      * Ошибки наружу не бросаются: `lastError` + состояние DISCONNECTED.
      */

@@ -215,6 +215,86 @@ $A --es screen SETTINGS --ez update true        # настройки со стр
 Апстримовые экраны **спрятаны, а не удалены** — иначе каждое слияние тега
 превращалось бы в разбор конфликтов.
 
+### 3.1. Замена подключения: новый ключ WireGuard (баг 13.11.2026)
+
+Личность устройства в NetBird — его ключ WireGuard. Ядро (`NewAuth` →
+`UpdateOrCreateConfig`) берёт ключ из существующего `netbird.cfg` и создаёт новый,
+**только если файла нет**; management узнаёт пир по ключу, и setup key новой ссылки
+(его `auto_groups`, лимит устройств) **не применяется** — телефон остаётся в группах
+прежнего JetBox. Найдено на iOS 13.11.2026, там помогла только переустановка.
+
+* **Решает отпечаток setup key** (`logic/JetBoxIdentity.plan`, порт iOS
+  `JetBoxIdentity.swift`): в `JetBoxBox` хранится не ключ, а `keyFingerprint` —
+  SHA-256 ключа в нижнем регистре, первые 16 байт hex (как iOS, `link/secretFingerprint`).
+  Другой отпечаток или другой хост management → `register(…, freshIdentity = true)`; тот же
+  отпечаток (повтор той же ссылки) → прежний ключ: одноразовый setup key уже израсходован, а
+  удалённый на сервере пир восстанавливается входом с тем же ключом. Конфига нет (ни на месте,
+  ни отложенного) → обычная регистрация. Конфиг есть, а сохранённого JetBox нет (вход в
+  расширенном режиме) → новый ключ.
+* **Экран «Другой JetBox»** решает удостоверение подключения (`boxIdentityOf`,
+  LINK-CONTRACT 1.2): `хост(m)|e`, иначе `хост(m)|t:<отпечаток t>`, иначе
+  `хост(m)|n:<имя>`. Токен `t` нигде не хранится — только его SHA-256 (16 байт hex, регистр
+  как есть) в `JetBoxBox.deviceTokenHash`; ссылка хэшируется перед сравнением. Та же identity с
+  другим отпечатком ключа (Кабинет перевыпустил ссылку) — без вопроса, но с новым ключом.
+  * **Для ссылок без `e` и `t` имя входит в identity**: переименование в Кабинете покажет
+    «Другой JetBox» (так по правилу), `renamed()` для них не действует.
+  * **Записи ≤ 1.0.2** (нет отпечатка ключа): экран «Другой JetBox»
+    (`JetBoxBox.isSameConnection`) мягкий — формула 1.0.2 `хост|(e ?: "")`. А `plan` оставляет
+    прежний ключ **только ссылке коробки** (`e` есть) с тем же `хост|e`; облачная ссылка (без
+    `e`) → новый ключ. iOS сравнивает полную identity, но у нас старая запись `t` не хранила, и
+    по `хост|e` любые две облачные ссылки одного management совпадают — прежний ключ вернул бы
+    баг. После успешного входа запись переписывается по-новому (с отпечатками).
+* **Новая личность = новый конфиг**: настройки расширенного режима, живущие в конфиге ядра
+  (Rosenpass, lazy connection, PSK, SSH и т. п.), при замене подключения сбрасываются на
+  значения ядра по умолчанию — как на iOS. Повтор той же ссылки их не трогает.
+* **Как** (`engine/IdentityRegistration` — без Android, `engine/ProfileFilesSwap`,
+  `AndroidEngine.register` под `registerMutex`):
+  1. **Запуск ядра закрыт** флагом процесса `VPNService.setIdentitySwapInProgress` (врезка
+     §4.3, стр. 10): `EngineRunner.runClient` отклоняет запуск — плитка, виджет, always-on,
+     MDM-перезапуск (стр. 9); `AndroidEngine.start` молчит; виджет открывает приложение.
+     Затем проверка `binder.isRunning` (под тем же замком `EngineRunner`): ядро работает —
+     отказ до любых файлов (`EngineStillRunning` → «Не удалось включить защиту»).
+  2. Остатки прошлого раза — `IdentityRegistration.recover` (см. ниже).
+     Путь прежнего ключа разбирает их так же под флагом — `recoverGuarded`: остатков нет —
+     флаг не трогается; есть — флаг, ядро работает → `EngineStillRunning`, иначе разбор.
+     Сценарий по `EngineApi.hasUnfinishedSwap()` гасит туннель и при повторе своей ссылки.
+  3. **stash**: метка `<конфиг>.jetbox-pending` (с `fsync`: отпечаток нового ключа и список
+     файлов; после переименований — `fsync` каталога, где система позволяет), потом файлы активного профиля (`netbird.cfg`/`<id>.json`,
+     `state.json`/`<id>.state.json`, `netbird.account.json`/`<id>.account.json`) — в
+     `*.jetbox-prev` (отсутствующий — маркер `*.jetbox-absent`).
+  4. **Вход** — ядро пишет новый конфиг с новым ключом.
+  5. **Хранилище** (`store.remember` колбэком `onRegistered` из `JetBoxOnboarding`), затем
+     **commit**: копии удаляются (копия конфига — последней), метка — после всех. Хвост 5 —
+     в `NonCancellable`. Удаление проверяется: не удалось и со второй попытки — метка остаётся,
+     регистрация считается удавшейся (хранилище уже новое), фиксацию доделает следующий старт.
+  * **Точка фиксации — запись хранилища.** До неё любая ошибка, отмена или смерть процесса →
+    restore (побайтно, с теми же правами), после — commit.
+  * **Восстановление при старте** — `JetBoxProcess.startup` (`JetBoxInitProvider.onCreate`),
+    синхронно: провайдер создаётся до сервиса туннеля, приёмника виджета и плитки, так что ядро
+    этого процесса не стартует поверх остатков. Ядро не загружается: метки ищутся в `filesDir`
+    и `filesDir/profiles`, список файлов — в метке; файлы сверяются **по имени** и ищутся рядом с
+    меткой (`/data/user/0/…` и `/data/data/…` — один каталог), расхождение — в журнал. Каждая
+    метка разбирается отдельно. Ядро уже работает (повтор из `JetBoxApp.create`) — разбор
+    пропускается, его сделает регистрация. Без меток — два `listFiles` на главном
+    потоке до первых кадров; с меткой — несколько переименований маленьких файлов. Метка с тем
+    же отпечатком, что в хранилище → commit, иначе → restore. Регистрация (с новым ключом или
+    прежним) тоже начинает с этого разбора.
+  * **Отмена** во время входа — restore, прежний туннель поднимается снова (если был поднят),
+    но только если остатков нет (`hasUnfinishedSwap`): возврат не удался — туннель не
+    поднимается (шаг сценария задаёт тот, кто отменил). **Restore не удался** — `RestoreFailed` → «Что-то пошло не так» с подробностями «не удалось
+    вернуть прежнее подключение…», туннель **не** поднимается; «Попробовать снова» начнёт с
+    восстановления.
+  * Без `freshIdentity` при неудаче откатывается только адрес сервера, как раньше.
+  * `first_launch` (`ui_prefs`) пишется после `onRegistered` через `runCatching`: хранилище
+    уже новое, сбой этой записи не должен откатывать файлы.
+* Старый пир на сервере не трогаем — его убирает Кабинет при отзыве устройства. Ключи в
+  журнал не попадают: только «новая личность устройства». Контракт ядра сторожит
+  `UpstreamContractsTest.coreIdentityFiles`, врезку — `identitySwapGateInRunClient`.
+  Последовательность — `IdentityRegistrationTest` (успех, ошибка входа, отмена, сбои stash,
+  restore и удаления копии, смерть до и после записи хранилища), сценарий —
+  `JetBoxOnboardingTest` через `FakeEngine` с настоящим `IdentityRegistration` на временных
+  файлах.
+
 ## 4. Врезки в апстрим (таблица конфликтов)
 
 Всё, что форк меняет вне `jetbox/`. Список снят по факту:
@@ -250,8 +330,8 @@ $A --es screen SETTINGS --ez update true        # настройки со стр
 
 | № | Файл | Что изменено | Зачем | Как разрешать конфликт |
 |---|---|---|---|---|
-| 9 | `tool/.../EngineRunner.java` | Поле `connectedAtMillis` (момент первого `onConnected` текущего запуска ядра; сбрасывается при старте и конце запуска); наблюдатель в конструкторе, который его ставит; геттер `connectedAtMillis()`; `removeConnectionObserver(...)` | «В сети» на главном экране считается от запуска ядра, а не от процесса приложения; наш мост снимает свой наблюдатель | Обе стороны: врезки — отдельные блоки с комментарием `// JetBox:`. Если апстрим переписал жизненный цикл запуска (`start`/`finally`) — перенести три сброса `connectedAtMillis = 0` в новые места |
-| 10 | `tool/.../VPNService.java` | В `MyLocalBinder`: `connectedAtMillis()`, `addConnectionObserver(...)`, `removeConnectionObserver(...)` — тонкие обёртки над `EngineRunner` | Наш мост (`engine/`) подписывается на фазу туннеля так, чтобы подписка переживала `removeConnectionStateListener` из `MainActivity.onStop` | Обе стороны (добавленные методы не пересекаются с апстримовыми). Если апстрим сам добавил наблюдателя — перейти на его API и удалить наш |
+| 9 | `tool/.../EngineRunner.java` | (а) Поле `connectedAtMillis` (момент первого `onConnected` текущего запуска ядра; сбрасывается при старте и конце запуска); наблюдатель в конструкторе, который его ставит; геттер `connectedAtMillis()`; `removeConnectionObserver(...)`; (б) в `runClient` после проверки «already running»: `if (VPNService.isIdentitySwapInProgress()) { notifyServiceStateListeners(false); return; }` | (а) «В сети» на главном экране считается от запуска ядра, а не от процесса приложения; наш мост снимает свой наблюдатель. (б) Во время замены личности устройства (§3.1) ядро не запускается ни плиткой, ни виджетом, ни always-on, ни MDM-перезапуском — все пути сходятся в `runClient`; уже поднятый foreground-сервис отпускается | Обе стороны: врезки — отдельные блоки с комментарием `// JetBox:`. Если апстрим переписал жизненный цикл запуска (`start`/`finally`) — перенести три сброса `connectedAtMillis = 0` в новые места; (б) — в начало того метода, через который теперь идут все запуски ядра, до `engineIsRunning = true`. Проверка — `UpstreamContractsTest.identitySwapGateInRunClient` |
+| 10 | `tool/.../VPNService.java` | (а) В `MyLocalBinder`: `connectedAtMillis()`, `addConnectionObserver(...)`, `removeConnectionObserver(...)` — тонкие обёртки над `EngineRunner`; (б) статические `setIdentitySwapInProgress(boolean)` / `isIdentitySwapInProgress()` над полем `private static volatile boolean identitySwapInProgress` | (а) Наш мост (`engine/`) подписывается на фазу туннеля так, чтобы подписка переживала `removeConnectionStateListener` из `MainActivity.onStop`. (б) Флаг процесса «идёт замена личности» (§3.1): ставит `AndroidEngine.register`, читают `EngineRunner.runClient` (стр. 9), `AndroidEngine.start`, виджет | Обе стороны (добавленные методы не пересекаются с апстримовыми). Если апстрим сам добавил наблюдателя — перейти на его API и удалить наш. (б) — вернуть блок целиком |
 | 11 | `tool/.../ForegroundNotification.java` | (а) `setClassName(service.getPackageName(), "net.jetnet.jetbox.JetBoxActivity")` — тап по уведомлению (было литералом `io.netbird.client` + `MainActivity`); (б) `extendIntent()`: пакет из `getPackageName()`, класс по-прежнему `io.netbird.client.MainActivity` | (а) уведомление открывает наш экран; (б) «Продлить сессию» обрабатывает `MainActivity.handleSessionIntent`, а не `JetBoxActivity`; литерал пакета ломал бы работу под нашим applicationId | Взять апстрим, повторить обе правки. Проверка — `noHardcodedUpstreamPackageInClassNames` (литерал `"io.netbird.client"` первым аргументом `setClassName` запрещён) |
 | 12 | `tool/.../SessionNotification.java` | `setClassName(context.getPackageName(), "net.jetnet.jetbox.JetBoxActivity")` | Уведомление об истечении сессии открывает наш экран и не зашивает чужой пакет | Как строка 11 |
 | 13 | `tool/.../IFace.java` | `builder.setSession("JetBox")` перед `setMtu` | Имя VPN в системе (шторка, настройки VPN) — JetBox | Обе стороны; проверка — `vpnSessionNamed` |
@@ -315,7 +395,7 @@ NetBird ссылаются на `nb_orange`, `nb_logo_full`, `ic_netbird_tile` �
 | `INTENT_ACTION_START` — FGS до `runEngine` | `VPNService.onStartCommand` | `AndroidEngine.start` | — (не соберётся) |
 | prefs `ui_prefs`, ключ `first_launch` | `app/.../ui/PreferenceUI.java` | `AndroidEngine.register` | Расширенный режим покажет экран первого запуска NetBird |
 | prefs `netbird`, ключ `isConnectionForceRelayed` | `tool/.../Preferences.java` | `ConnectionDefaults` (через `JetBoxProcess.startup`) | Весь трафик снова через ретранслятор |
-| `MDMBridge.openPreferences(ctx, configPath)`, `MDMBridge.newAuth(ctx, configPath, url)`, `ProfileManagerWrapper.getActiveConfigPath()` | `tool/.../MDMBridge.java`, `ProfileManagerWrapper.java` | `AndroidEngine.register` (порядок — как `FirstInstallFragment.applyServer`) | Регистрация по ключу |
+| `MDMBridge.openPreferences(ctx, configPath)`, `MDMBridge.newAuth(ctx, configPath, url)`, `ProfileManagerWrapper.getActiveConfigPath()`/`getActiveStateFilePath()` (состояние и учётная запись — в каталоге конфига: на это опирается `ProfileFilesSwap.fromPending`) | `tool/.../MDMBridge.java`, `ProfileManagerWrapper.java`, `netbird/client/mobile/profile_manager.go` | `AndroidEngine.register` (порядок — как `FirstInstallFragment.applyServer`; файлы личности — §3.1) | Регистрация по ключу; новая личность при замене |
 | Коды `Android.ClientState*` (= `peer.ClientState`, `iota`: 0 Disconnected, 1 Connected, 2 Connecting, 3 Disconnecting, 4 NoNetwork) и `Android.ConnStatusConnected` | `netbird/client/internal/peer/listener.go`, `netbird/client/android/*.go` | `CoreState`, `HomeViewModel`, `AndroidEngine` | «Нет интернета» и старт без сети на щите |
 | Имя класса `io.netbird.client.MainActivity` (строкой) | `app/` | `openUpstreamMainActivity`, `ForegroundNotification.extendIntent` | Расширенный режим и «Продлить сессию» не откроются |
 

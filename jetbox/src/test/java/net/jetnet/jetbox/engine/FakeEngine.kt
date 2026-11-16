@@ -3,16 +3,27 @@ package net.jetnet.jetbox.engine
 import android.content.Intent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
+import net.jetnet.jetbox.logic.JetBoxIdentity
 import net.jetnet.jetbox.logic.PeerSnapshot
 import net.jetnet.jetbox.logic.RouteInfo
 import net.jetnet.jetbox.logic.VpnDisplayState
+import java.io.File
+import java.nio.file.Files
 
 /**
  * Тестовый движок: потоки — открытые `MutableStateFlow` (тест двигает состояние сам),
  * ответы `register`/`selectRoute`/`deselectRoute`/`needsVpnConsent` настраиваются, вызовы считаются.
  * Сеть — поток [online]; `isOnline()` отдаёт его текущее значение.
+ *
+ * Регистрация с новой личностью идёт через настоящий [IdentityRegistration] и [ProfileFilesSwap]
+ * на файлах профиля во временной папке [profileDir]: «ядро» при входе пишет в [configFile] ключ
+ * `key=<setup key>`, если конфига нет, — как `NewAuth`. Чья личность на диске — [deviceKey].
+ * Запуск ядра на время замены закрыт ([gateClosed]): [start] тогда отклоняется. Путь прежнего ключа,
+ * как у `AndroidEngine`, сначала разбирает остатки оборванной замены (`recoverGuarded`).
  */
-class FakeEngine : EngineApi {
+class FakeEngine(
+    val profileDir: File = Files.createTempDirectory("jetbox-profile").toFile().apply { deleteOnExit() },
+) : EngineApi {
     override val state = MutableStateFlow(VpnDisplayState.DISCONNECTED)
     override val peers = MutableStateFlow<List<PeerSnapshot>>(emptyList())
     override val routes = MutableStateFlow<List<RouteInfo>>(emptyList())
@@ -27,6 +38,31 @@ class FakeEngine : EngineApi {
     var deselectRouteResult: Result<Unit> = Result.success(Unit)
     var consentIntent: Intent? = null
     var loginRequired: Boolean = false
+
+    val configFile = File(profileDir, "netbird.cfg")
+    val stateFile = File(profileDir, "state.json")
+
+    /** Хранилище сценария: откуда [IdentityRegistration] берёт сохранённый отпечаток ключа. */
+    var storedFingerprint: () -> String? = { null }
+
+    /** Есть ли конфиг ядра (личность устройства) — ответ [hasDeviceConfig]; `true` — создаёт конфиг. */
+    var configExists: Boolean
+        get() = swap().hasConfig()
+        set(value) {
+            if (value) { if (!configFile.exists()) configFile.writeText("key=PREVIOUS") } else configFile.delete()
+        }
+
+    /** Чей ключ в конфиге: `key=<setup key>`; `null` — конфига нет. */
+    fun deviceKey(): String? = configFile.takeIf { it.exists() }?.readText()
+
+    /** Для тестов: удаление файла профиля «не удаётся». */
+    var failDelete: (File) -> Boolean = { false }
+
+    fun swap() = ProfileFilesSwap(listOf(configFile, stateFile)) { f -> if (failDelete(f)) false else f.delete() }
+
+    /** Закрыт ли запуск ядра (идёт замена личности). */
+    var gateClosed = false; private set
+    var refusedStarts = 0; private set
 
     /** Работает ли ядро; `null` — как `state != DISCONNECTED`. */
     var running: Boolean? = null
@@ -43,6 +79,8 @@ class FakeEngine : EngineApi {
     var registerCalls = 0; private set
     var lastRegisterUrl: String? = null; private set
     var lastRegisterKey: String? = null; private set
+    /** `freshIdentity` каждого вызова [register], по порядку. */
+    val registerFreshIdentity = mutableListOf<Boolean>()
     var needsVpnConsentCalls = 0; private set
     var startCalls = 0; private set
     var stopCalls = 0; private set
@@ -58,13 +96,44 @@ class FakeEngine : EngineApi {
         return online.value
     }
 
-    override suspend fun register(managementURL: String, setupKey: String): Result<Unit> {
+    override suspend fun register(
+        managementURL: String,
+        setupKey: String,
+        freshIdentity: Boolean,
+        onRegistered: () -> Unit,
+    ): Result<Unit> {
         registerCalls++
         lastRegisterUrl = managementURL
         lastRegisterKey = setupKey
-        registerGate?.await()
-        return registerResult
+        registerFreshIdentity += freshIdentity
+        val gate = object : IdentityRegistration.TunnelGate {
+            override fun close() { gateClosed = true }
+            override fun open() { gateClosed = false }
+            override fun isEngineRunning() = isRunning()
+        }
+        if (!freshIdentity) {
+            // Как AndroidEngine.registerKeepingKey: остатки оборванной замены — сначала разобрать.
+            IdentityRegistration(swap(), gate).recoverGuarded(storedFingerprint()).onFailure { return Result.failure(it) }
+            val error = login(setupKey)
+            if (error != null) return Result.failure(error)
+            onRegistered()
+            return Result.success(Unit)
+        }
+        return IdentityRegistration(swap(), gate).register(
+            JetBoxIdentity.fingerprint(setupKey), storedFingerprint(), { login(setupKey) }, onRegistered,
+        )
     }
+
+    /** «Ядро»: `NewAuth` создаёт конфиг с новым ключом, если его нет; потом вход ([registerGate], [registerResult]). */
+    private suspend fun login(setupKey: String): Exception? {
+        if (!configFile.exists()) configFile.writeText("key=$setupKey")
+        registerGate?.await()
+        return registerResult.exceptionOrNull() as Exception?
+    }
+
+    override suspend fun hasDeviceConfig(): Boolean = configExists
+
+    override suspend fun hasUnfinishedSwap(): Boolean = swap().hasLeftovers()
 
     override fun needsVpnConsent(): Intent? {
         needsVpnConsentCalls++
@@ -76,6 +145,7 @@ class FakeEngine : EngineApi {
     override fun isRunning(): Boolean = running ?: (state.value != VpnDisplayState.DISCONNECTED)
 
     override fun start() {
+        if (gateClosed) { refusedStarts++; return }
         startCalls++
         onStart(this)
     }

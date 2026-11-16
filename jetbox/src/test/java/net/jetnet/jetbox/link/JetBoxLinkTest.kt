@@ -296,4 +296,49 @@ class JetBoxLinkTest {
     }
 
     // endregion
+
+    // region токен устройства t (LINK-CONTRACT 1.2)
+
+    @Test fun deviceTokenIsParsedAndMasked() {
+        val p = payload("https://box.jet-net.net/connect#k=$key&m=https%3A%2F%2Fnetbird.jet-net.net&n=Tariff&p=android&t=device-token-12345")
+        assertEquals("device-token-12345", p.deviceToken)
+        assertNull(p.exitNodeName)
+        assertFalse("токен в toString — только маской", p.toString().contains("device-token-12345"))
+        assertTrue(p.toString().contains("2345"))
+        assertNull(payload("jetbox://connect#k=$key&t=").deviceToken)
+    }
+
+    @Test fun identityCarriesTokenFingerprintNotToken() {
+        val p = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&t=device-token-12345")
+        assertEquals(secretFingerprint("device-token-12345"), p.deviceTokenHash)
+        assertEquals("netbird.jet-net.net|t:${p.deviceTokenHash}", p.boxIdentity)
+        assertFalse(p.boxIdentity.contains("device-token"))
+        assertEquals("netbird.jet-net.net|", p.legacyBoxIdentity)
+    }
+
+    @Test fun identityWithExitIgnoresTokenAndName() {
+        val a = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=one&t=t1&n=A")
+        val b = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=one&t=t2&n=B")
+        assertEquals("mgmt.example.net|one", a.boxIdentity)
+        assertEquals(a.boxIdentity, b.boxIdentity)
+    }
+
+    @Test fun identityWithOnlyTokenFollowsToken() {
+        val a = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&t=t1&n=A")
+        val sameT = payload("jetbox://connect#k=$key&m=https://NetBird.jet-net.net&t=t1&n=B")
+        val otherT = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&t=t2&n=A")
+        assertEquals(a.boxIdentity, sameT.boxIdentity)
+        assertNotEquals(a.boxIdentity, otherT.boxIdentity)
+    }
+
+    @Test fun identityWithoutExitAndTokenIsHostAndName() {
+        val a = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=A")
+        assertEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net/&n=A").boxIdentity)
+        assertNotEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=B").boxIdentity)
+        assertNotEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://other.example.net&n=A").boxIdentity)
+        assertNotEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net").boxIdentity)
+        assertNotEquals("токен — не имя", a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&t=A").boxIdentity)
+    }
+
+    // endregion
 }

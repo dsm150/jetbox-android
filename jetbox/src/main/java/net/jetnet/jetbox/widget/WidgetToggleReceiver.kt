@@ -43,6 +43,8 @@ class WidgetToggleReceiver : BroadcastReceiver() {
             // Свежий процесс: движок ещё не привязан и isRunning == false даже при живом туннеле
             // (always-on поднял сервис без окна) — тогда спрашиваем систему, в foreground ли сервис.
             stale = widgetStateIsStale(state, running, serviceForeground = !running && vpnServiceInForeground(app)),
+            // Замена подключения: ядро не запустится (EngineRunner.runClient) — открываем приложение.
+            identitySwap = VPNService.isIdentitySwapInProgress(),
         )
         Log.i(TAG, "tap: $tap ($state)")
         when (tap) {

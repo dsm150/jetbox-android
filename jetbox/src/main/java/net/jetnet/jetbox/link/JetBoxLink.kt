@@ -5,6 +5,7 @@ import java.net.URI
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
+import java.security.MessageDigest
 import java.util.Locale
 
 /**
@@ -22,6 +23,12 @@ data class JetBoxLinkPayload(
     val exitNodeName: String?,
     /** Человекочитаемое имя коробки, если прислано. */
     val boxName: String?,
+    /**
+     * Токен устройства из облачной ссылки Кабинета (`t=`, LINK-CONTRACT 1.2): уникален на устройство,
+     * «Новая ссылка» в Кабинете выдаёт новый. В удостоверение и в хранилище — только отпечаток
+     * ([deviceTokenHash]); в журнал — только маска.
+     */
+    val deviceToken: String? = null,
 ) {
     /** Маска ключа для экрана и логов: видны только последние 4 символа. */
     val maskedKey: String
@@ -33,23 +40,75 @@ data class JetBoxLinkPayload(
             ?: exitNodeName?.takeIf { it.isNotEmpty() }
             ?: hostOf(managementURL)
 
-    /** Признак «та же коробка»: host(management) в нижнем регистре + выход. */
-    val boxIdentity: String
-        get() = boxIdentityOf(managementURL, exitNodeName)
+    /** Отпечаток токена устройства ([secretFingerprint]) — сам токен не хранится. */
+    val deviceTokenHash: String?
+        get() = deviceToken?.let(::secretFingerprint)
 
-    // Ключ не должен попасть в логи через toString().
+    /** Признак «то же подключение» для экрана подтверждения — см. [boxIdentityOf]. */
+    val boxIdentity: String
+        get() = boxIdentityOf(managementURL, exitNodeName, deviceTokenHash, boxName)
+
+    /** Удостоверение по формуле 1.0.2 — для записей без отпечатка ключа, см. [legacyBoxIdentityOf]. */
+    val legacyBoxIdentity: String
+        get() = legacyBoxIdentityOf(managementURL, exitNodeName)
+
+    // Ключ и токен не должны попасть в логи через toString().
     override fun toString(): String =
-        "JetBoxLinkPayload(setupKey=$maskedKey, managementURL=$managementURL, exitNodeName=$exitNodeName, boxName=$boxName)"
+        "JetBoxLinkPayload(setupKey=$maskedKey, managementURL=$managementURL, exitNodeName=$exitNodeName, " +
+            "boxName=$boxName, deviceToken=${deviceToken?.let(::maskSecret)})"
 }
 
 /** Единая маска секрета для экрана и логов: видны только последние 4 символа. */
 fun maskSecret(secret: String): String =
     if (secret.length <= 4) "••••" else "•".repeat(8) + "…" + secret.takeLast(4)
 
+/**
+ * Отпечаток секрета (setup key, токен устройства): SHA-256, первые 16 байт hex (32 символа) — как
+ * `JetBoxIdentity.fingerprint(of:)` iOS. По нему сравниваем, не храня сам секрет. Регистр не меняет:
+ * setup key приводит к нижнему регистру вызывающий (`JetBoxIdentity.fingerprint`), токен — как есть.
+ */
+fun secretFingerprint(secret: String): String =
+    MessageDigest.getInstance("SHA-256")
+        .digest(secret.toByteArray(Charsets.UTF_8))
+        .take(16)
+        .joinToString("") { "%02x".format(it) }
+
 internal fun hostOf(url: String): String = runCatching { URI(url).host }.getOrNull() ?: url
 
-/** Единая формула «та же коробка» для ссылки и сохранённого JetBox: иначе своя ссылка спросит «переключить?». */
-internal fun boxIdentityOf(managementURL: String, exitNodeName: String?): String =
+/**
+ * Единая формула «то же подключение» для ссылки и сохранённого JetBox (LINK-CONTRACT 1.2): иначе
+ * своя ссылка спросит «переключить?». Решает только, показывать ли экран «Другой JetBox»; новая ли
+ * личность устройства (ключ WireGuard) — решает отпечаток setup key, `JetBoxIdentity.plan`.
+ *
+ * * есть выход `e` — `хост(m)|e` (коробка);
+ * * иначе есть токен устройства `t` — `хост(m)|t:<отпечаток t>` (облачный абонент: свой `t` на
+ *   устройство; в удостоверении и в хранилище — только отпечаток, [secretFingerprint]);
+ * * иначе (старая ссылка) — `хост(m)|n:<n>`: другая коробка, если отличается хост или имя.
+ *   Поэтому для таких ссылок переименование в Кабинете — «Другой JetBox», а `renamed()` не действует.
+ *
+ * Запись, сделанная сборкой ≤ 1.0.2 (без отпечатка ключа), сравнивается по её формуле —
+ * [legacyBoxIdentityOf] (`JetBoxBox.isSameConnection`).
+ */
+internal fun boxIdentityOf(
+    managementURL: String,
+    exitNodeName: String?,
+    deviceTokenHash: String?,
+    boxName: String?,
+): String {
+    val host = hostOf(managementURL).lowercase(Locale.ROOT)
+    return when {
+        !exitNodeName.isNullOrEmpty() -> "$host|$exitNodeName"
+        !deviceTokenHash.isNullOrEmpty() -> "$host|t:$deviceTokenHash"
+        else -> "$host|n:${boxName ?: ""}"
+    }
+}
+
+/**
+ * Формула «та же коробка» сборок ≤ 1.0.2 и iOS: `хост(m)|(e ?: "")`. Для записей без отпечатка ключа:
+ * они не знают ни `t`, ни правила про имя, и своя облачная ссылка с `t` не должна спрашивать
+ * «переключить?» и менять ключ.
+ */
+internal fun legacyBoxIdentityOf(managementURL: String, exitNodeName: String?): String =
     hostOf(managementURL).lowercase(Locale.ROOT) + "|" + (exitNodeName ?: "")
 
 object JetBoxLink {
@@ -86,6 +145,7 @@ object JetBoxLink {
                 managementURL = management,
                 exitNodeName = params["e"]?.takeIf { it.isNotEmpty() },
                 boxName = params["n"]?.takeIf { it.isNotEmpty() },
+                deviceToken = params["t"]?.takeIf { it.isNotEmpty() },
             )
         )
     }

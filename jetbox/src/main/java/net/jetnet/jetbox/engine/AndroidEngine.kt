@@ -36,10 +36,15 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.NonCancellable
+import net.jetnet.jetbox.JetBoxProcess
 import net.jetnet.jetbox.link.maskSecret
+import net.jetnet.jetbox.logic.JetBoxIdentity
 import net.jetnet.jetbox.logic.PeerSnapshot
 import net.jetnet.jetbox.logic.RouteInfo
 import net.jetnet.jetbox.logic.VpnDisplayState
+import net.jetnet.jetbox.store.JetBoxStore
 import net.jetnet.jetbox.widget.JetBoxWidget
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -191,6 +196,8 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
     }
 
     init {
+        // Остатки оборванной замены личности разобраны раньше — при старте процесса
+        // (JetBoxProcess.startup → recoverIdentityFiles), до плитки, виджета и always-on.
         ensureBound()
         watchNetwork()
         // Виджет на рабочем столе — по каждой смене состояния (и сразу: при создании движка
@@ -319,69 +326,190 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
         }
     }
 
-    override suspend fun register(managementURL: String, setupKey: String): Result<Unit> =
+    override suspend fun hasDeviceConfig(): Boolean = withContext(Dispatchers.IO) {
+        runCatching { swapFor(ProfileManagerWrapper(app).activeConfigPath).hasConfig() }.getOrDefault(false)
+    }
+
+    override suspend fun hasUnfinishedSwap(): Boolean = withContext(Dispatchers.IO) {
+        runCatching { swapFor(ProfileManagerWrapper(app).activeConfigPath).hasLeftovers() }.getOrDefault(false)
+    }
+
+    /** Файлы активного профиля ядра, хранящие личность устройства; конфиг — первым (главный). */
+    private fun swapFor(configPath: String): ProfileFilesSwap {
+        val statePath = runCatching { ProfileManagerWrapper(app).activeStateFilePath }.getOrNull()
+        return ProfileFilesSwap(
+            listOfNotNull(
+                File(configPath),
+                statePath?.let(::File),
+                File(ProfileFilesSwap.accountPathFor(configPath)),
+            ),
+        )
+    }
+
+    /** Отпечаток setup key сохранённого JetBox — по нему разбираются остатки замены. */
+    private fun storedFingerprint(): String? =
+        JetBoxStore(JetBoxProcess.prefs(app)).currentBox?.setupKeyFingerprint
+
+    /**
+     * Запуск ядра на время замены личности: флаг процесса в `VPNService` (врезка JetBox, его
+     * проверяет `EngineRunner.runClient` — плитка, виджет, always-on, MDM-перезапуск).
+     * `isRunning` спрашивается после закрытия: `runClient` и `isRunning` под одним замком
+     * `EngineRunner`, так что запуск либо уже виден, либо будет отклонён.
+     */
+    private val processGate = object : IdentityRegistration.TunnelGate {
+        override fun close() = VPNService.setIdentitySwapInProgress(true)
+        override fun open() = VPNService.setIdentitySwapInProgress(false)
+        override fun isEngineRunning(): Boolean = binder?.isRunning == true
+    }
+
+    override suspend fun register(
+        managementURL: String,
+        setupKey: String,
+        freshIdentity: Boolean,
+        onRegistered: () -> Unit,
+    ): Result<Unit> =
         registerMutex.withLock {
             withContext(Dispatchers.IO) {
-                Log.i(TAG, "register: url=$managementURL key=${maskSecret(setupKey)}")
-                var previousURL: String? = null
-                var ok = false
-                try {
-                    // Порядок — как FirstInstallFragment.applyServer() апстрима.
-                    val configPath = ProfileManagerWrapper(app).activeConfigPath
-                    // Прежний адрес — только из существующего конфига: иначе ядро отдаст адрес
-                    // по умолчанию, и «откат» записал бы его вместо пустоты.
-                    if (File(configPath).exists()) {
-                        previousURL = runCatching {
-                            MDMBridge.openPreferences(app, configPath).managementURL
-                        }.getOrNull()
-                    }
-                    MDMBridge.openPreferences(app, configPath).apply {
-                        setManagementURL(managementURL)
-                        commit()
-                    }
-                    val auth = MDMBridge.newAuth(app, configPath, managementURL)
-                    val error = suspendCancellableCoroutine<Exception?> { cont ->
-                        auth.loginWithSetupKeyAndSaveConfig(object : ErrListener {
-                            override fun onSuccess() {
-                                if (cont.isActive) cont.resume(null)
-                            }
-                            override fun onError(e: Exception?) {
-                                if (cont.isActive) cont.resume(e ?: Exception(""))
-                            }
-                        }, setupKey, Build.MODEL) // модель телефона — как апстрим applyServer; видна в панели
-                    }
-                    if (error != null) {
-                        Log.w(TAG, "register failed: ${error.message}")
-                        return@withContext Result.failure(asCoreError(error))
-                    }
-                    // Флаг апстримового PreferenceUI: MainActivity не покажет экран первого запуска.
-                    app.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
-                        .edit().putBoolean(FIRST_LAUNCH_KEY, false).commit()
-                    Log.i(TAG, "register ok")
-                    ok = true
-                    Result.success(Unit)
-                } catch (e: CancellationException) {
-                    throw e
+                Log.i(TAG, "register: url=$managementURL key=${maskSecret(setupKey)} fresh=$freshIdentity")
+                val configPath = try {
+                    ProfileManagerWrapper(app).activeConfigPath
                 } catch (e: Exception) {
                     Log.w(TAG, "register failed: ${e.message}")
-                    Result.failure(asCoreError(e))
-                } finally {
-                    // Неудача (в том числе отмена) не должна оставлять в конфиге адрес нового
-                    // сервера: прежний JetBox после этого поднимется уже не к своему management.
-                    if (!ok && previousURL != null && previousURL != managementURL) {
-                        try {
-                            MDMBridge.openPreferences(app, ProfileManagerWrapper(app).activeConfigPath).apply {
-                                setManagementURL(previousURL)
-                                commit()
-                            }
-                            Log.i(TAG, "register: адрес сервера возвращён на прежний")
-                        } catch (e: Exception) {
-                            Log.w(TAG, "register: не удалось вернуть прежний адрес сервера: ${e.message}")
-                        }
+                    return@withContext Result.failure(asCoreError(e))
+                }
+                val done: () -> Unit = {
+                    onRegistered()
+                    // Флаг апстримового PreferenceUI: MainActivity не покажет экран первого запуска.
+                    // После onRegistered хранилище уже новое: сбой этой записи не должен стать
+                    // «неудачей регистрации» — откат файлов развёл бы их с хранилищем.
+                    runCatchingLogged("first_launch") {
+                        app.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
+                            .edit().putBoolean(FIRST_LAUNCH_KEY, false).commit()
                     }
                 }
+                val result = if (freshIdentity) {
+                    registerFresh(configPath, managementURL, setupKey, done)
+                } else {
+                    registerKeepingKey(configPath, managementURL, setupKey, done)
+                }
+                result.exceptionOrNull()?.let { Log.w(TAG, "register failed: ${it.message}") }
+                    ?: Log.i(TAG, "register ok")
+                result
             }
         }
+
+    /**
+     * Новая личность — [IdentityRegistration]: ядро должно быть привязано (иначе не узнать, работает
+     * ли оно), запуск закрыт, файлы отложены, вход, хранилище, фиксация.
+     */
+    private suspend fun registerFresh(
+        configPath: String,
+        managementURL: String,
+        setupKey: String,
+        onRegistered: () -> Unit,
+    ): Result<Unit> {
+        if (withTimeoutOrNull(BIND_TIMEOUT_MS) { awaitBinder() } == null) {
+            return Result.failure(IllegalStateException("VPN service is not bound"))
+        }
+        return IdentityRegistration(swapFor(configPath), processGate) { Log.i(TAG, it) }.register(
+            newFingerprint = JetBoxIdentity.fingerprint(setupKey),
+            storedFingerprint = storedFingerprint(),
+            login = { login(configPath, managementURL, setupKey) },
+            onRegistered = onRegistered,
+        ).map { }.recoverCatching { throw if (it is Exception) asCoreError(it) else it }
+    }
+
+    /**
+     * Прежний ключ (повтор своей ссылки, первый вход): остатки оборванной замены — сначала разобрать
+     * (иначе старт процесса потом вернул бы их поверх этой регистрации) на условиях замены —
+     * [IdentityRegistration.recoverGuarded]: запуск ядра закрыт, ядро работает — отказ. Неудача
+     * входа или отмена — вернуть прежний адрес сервера.
+     */
+    private suspend fun registerKeepingKey(
+        configPath: String,
+        managementURL: String,
+        setupKey: String,
+        onRegistered: () -> Unit,
+    ): Result<Unit> {
+        val swap = swapFor(configPath)
+        if (swap.hasLeftovers()) {
+            // Не привязано — не узнать, работает ли ядро: файлы не трогаем.
+            if (withTimeoutOrNull(BIND_TIMEOUT_MS) { awaitBinder() } == null) {
+                return Result.failure(IllegalStateException("VPN service is not bound"))
+            }
+            IdentityRegistration(swap, processGate) { Log.i(TAG, it) }.recoverGuarded(storedFingerprint())
+                .onFailure { return Result.failure(it as? Exception ?: Exception(it)) }
+        }
+        var previousURL: String? = null
+        var ok = false
+        try {
+            // Прежний адрес — только из существующего конфига: иначе ядро отдаст адрес
+            // по умолчанию, и «откат» записал бы его вместо пустоты.
+            if (File(configPath).exists()) {
+                previousURL = runCatching { MDMBridge.openPreferences(app, configPath).managementURL }.getOrNull()
+            }
+            login(configPath, managementURL, setupKey)?.let { return Result.failure(asCoreError(it)) }
+            withContext(NonCancellable) { onRegistered() }
+            ok = true
+            return Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return Result.failure(asCoreError(e))
+        } finally {
+            // Неудача (в том числе отмена) не должна оставлять в конфиге адрес нового сервера:
+            // прежний JetBox после этого поднимется уже не к своему management.
+            if (!ok) restoreManagementURL(previousURL, managementURL)
+        }
+    }
+
+    /**
+     * Вход ядра по ключу. Порядок — как FirstInstallFragment.applyServer() апстрима: адрес сервера в
+     * конфиг, `NewAuth` (нет конфига — ядро создаёт новый с новым ключом), вход. `null` — успех.
+     */
+    private suspend fun login(configPath: String, managementURL: String, setupKey: String): Exception? = try {
+        MDMBridge.openPreferences(app, configPath).apply {
+            setManagementURL(managementURL)
+            commit()
+        }
+        val auth = MDMBridge.newAuth(app, configPath, managementURL)
+        suspendCancellableCoroutine<Exception?> { cont ->
+            auth.loginWithSetupKeyAndSaveConfig(object : ErrListener {
+                override fun onSuccess() {
+                    if (cont.isActive) cont.resume(null)
+                }
+                override fun onError(e: Exception?) {
+                    if (cont.isActive) cont.resume(e ?: Exception(""))
+                }
+            }, setupKey, Build.MODEL) // модель телефона — как апстрим applyServer; видна в панели
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        e
+    }
+
+    private fun restoreManagementURL(previousURL: String?, managementURL: String) {
+        if (previousURL == null || previousURL == managementURL) return
+        try {
+            MDMBridge.openPreferences(app, ProfileManagerWrapper(app).activeConfigPath).apply {
+                setManagementURL(previousURL)
+                commit()
+            }
+            Log.i(TAG, "register: адрес сервера возвращён на прежний")
+        } catch (e: Exception) {
+            Log.w(TAG, "register: не удалось вернуть прежний адрес сервера: ${e.message}")
+        }
+    }
+
+    /** Дождаться привязки к сервису туннеля (обычно уже есть: привязка — при создании движка). */
+    private suspend fun awaitBinder(): VPNService.MyLocalBinder {
+        while (true) {
+            binder?.let { return it }
+            ensureBound()
+            delay(BIND_POLL_MS)
+        }
+    }
 
     override fun needsVpnConsent(): Intent? = VpnService.prepare(app)
 
@@ -391,6 +519,12 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
 
     override fun start() {
         guarded("start") {
+            // Идёт замена личности: ядро всё равно откажет (EngineRunner.runClient), а сервис
+            // в foreground поднимать незачем.
+            if (VPNService.isIdentitySwapInProgress()) {
+                Log.w(TAG, "start: identity swap in progress, refused")
+                return
+            }
             if (VpnService.prepare(app) != null) {
                 _lastError.value = EngineApi.VPN_PERMISSION_REQUIRED
                 return
@@ -549,6 +683,8 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
         private const val POLL_INTERVAL_MS = 2_000L
         private const val UI_PREFS = "ui_prefs"
         private const val FIRST_LAUNCH_KEY = "first_launch"
+        private const val BIND_TIMEOUT_MS = 5_000L
+        private const val BIND_POLL_MS = 50L
 
         @Volatile private var instance: AndroidEngine? = null
 
@@ -556,6 +692,46 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
             instance ?: synchronized(this) {
                 instance ?: AndroidEngine(context).also { instance = it }
             }
+
+        /**
+         * Старт процесса (`JetBoxProcess.startup`, из `JetBoxInitProvider`): разобрать остатки
+         * оборванной замены личности — до плитки, виджета и always-on этого процесса. Ядро не
+         * загружается: метки ищутся в каталоге конфигов, список файлов записан в метке; решение —
+         * [IdentityRegistration.recover] по отпечатку в хранилище. Без меток — два `listFiles`.
+         * Идёт замена в этом процессе или ядро уже работает (повтор из `JetBoxApp.create`) — не
+         * трогаем: файлы профиля под работающим ядром не меняются, остатки разберёт регистрация.
+         * Каждая метка — отдельно: сбой одной не мешает остальным.
+         */
+        fun recoverIdentityFiles(context: Context) {
+            if (VPNService.isIdentitySwapInProgress()) return
+            if (instance?.binder?.isRunning == true) {
+                Log.i(TAG, "остатки замены личности: ядро работает, разбор отложен до регистрации")
+                return
+            }
+            val pending = try {
+                ProfileFilesSwap.findPending(context.filesDir)
+            } catch (e: Exception) {
+                Log.w(TAG, "не удалось найти остатки замены личности: ${e.message}")
+                return
+            }
+            if (pending.isEmpty()) return
+            val stored = try {
+                JetBoxStore(JetBoxProcess.prefs(context)).currentBox?.setupKeyFingerprint
+            } catch (e: Exception) {
+                Log.w(TAG, "остатки замены личности: хранилище не прочитано: ${e.message}")
+                return
+            }
+            for (p in pending) {
+                try {
+                    val swap = ProfileFilesSwap.fromPending(p) { Log.w(TAG, it) }
+                    val outcome = IdentityRegistration.recover(swap, stored)
+                    Log.i(TAG, "остатки оборванной замены личности (${p.name}): $outcome")
+                } catch (e: Exception) {
+                    // Остатки этой метки остаются; следующая регистрация начнёт с их разбора.
+                    Log.w(TAG, "не удалось разобрать остатки замены личности (${p.name}): ${e.message}")
+                }
+            }
+        }
 
         /** Исключение, текст которого — сообщение ядра (пустое сообщение заменяем описанием). */
         private fun asCoreError(e: Exception): Exception =

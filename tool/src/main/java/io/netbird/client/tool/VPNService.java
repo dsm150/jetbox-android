@@ -62,6 +62,21 @@ public class VPNService extends android.net.VpnService {
     private android.content.BroadcastReceiver stopEngineReceiver;
     private android.content.BroadcastReceiver mdmPolicyReceiver;
 
+    // JetBox: идёт замена личности устройства (AndroidEngine.register → IdentityRegistration):
+    // файлы профиля ядра подменяются, и любой запуск ядра — плитка, виджет, always-on, перезапуск
+    // по MDM — отклоняется в EngineRunner.runClient. Флаг процесса: сервис живёт в том же процессе.
+    private static volatile boolean identitySwapInProgress;
+
+    // JetBox: см. identitySwapInProgress.
+    public static void setIdentitySwapInProgress(boolean inProgress) {
+        identitySwapInProgress = inProgress;
+    }
+
+    // JetBox: см. identitySwapInProgress.
+    public static boolean isIdentitySwapInProgress() {
+        return identitySwapInProgress;
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();

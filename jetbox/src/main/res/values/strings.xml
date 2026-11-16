@@ -14,7 +14,7 @@
     <string name="jb_privacy_notice">JetBox sends only technical connection data to the JetNet server: device name, app version and network addresses — your network needs them to recognise this device. Traffic content is not collected or stored. Data is not shared with third parties.</string>
     <string name="jb_privacy_more">Learn more</string>
     <string name="jb_switch_title">A different JetBox</string>
-    <string name="jb_switch_message">This phone is registered with “%1$s”, but the link points to “%2$s”. Switch? The current connection will be dropped.</string>
+    <string name="jb_switch_message">This phone is registered with “%1$s”, but the link points to “%2$s”. Switch? The previous connection will be replaced.</string>
     <string name="jb_switch_confirm">Switch</string>
     <string name="jb_registering">Registering this device…</string>
     <string name="jb_connecting">Connecting…</string>

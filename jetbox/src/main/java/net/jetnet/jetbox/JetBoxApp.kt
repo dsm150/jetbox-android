@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.MainScope
+import net.jetnet.jetbox.engine.AndroidEngine
 import net.jetnet.jetbox.engine.EngineApi
 import net.jetnet.jetbox.engine.JetBoxEngine
 import net.jetnet.jetbox.engine.JetBoxOnboarding
@@ -108,6 +109,11 @@ object JetBoxProcess {
             ours = SharedPrefsStore(app.getSharedPreferences(JetBoxStore.PREFS_NAME, Context.MODE_PRIVATE), async = true),
             upstream = SharedPrefsStore(app.getSharedPreferences(UPSTREAM_PREFS, Context.MODE_PRIVATE), async = true),
         )
+        // Остатки оборванной замены личности устройства (смерть процесса посреди регистрации) —
+        // синхронно, до того как в этом процессе что-либо запустит ядро: провайдер создаётся раньше
+        // сервиса туннеля, приёмника виджета и плитки. Ядро не грузится; без меток — два listFiles,
+        // с меткой — несколько переименований маленьких файлов. Главный поток провайдера, но до кадров UI.
+        AndroidEngine.recoverIdentityFiles(app)
         // Есть виджет — движок нужен с первой секунды процесса: туннель могут включить плиткой или
         // always-on без окна, а перерисовывает виджет только движок. После onCreate приложения —
         // в провайдере applicationContext ещё не готов.

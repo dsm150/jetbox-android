@@ -54,7 +54,14 @@ class ShowcaseEngine(initial: ShowcaseHomeState) : EngineApi {
     override val online = MutableStateFlow(initial != ShowcaseHomeState.OFFLINE)
 
     override fun isOnline() = online.value
-    override suspend fun register(managementURL: String, setupKey: String) = Result.success(Unit)
+    override suspend fun register(
+        managementURL: String,
+        setupKey: String,
+        freshIdentity: Boolean,
+        onRegistered: () -> Unit,
+    ): Result<Unit> = Result.success(Unit).also { onRegistered() }
+    override suspend fun hasDeviceConfig() = true
+    override suspend fun hasUnfinishedSwap() = false
     override fun needsVpnConsent(): Intent? = null
     override fun isLoginRequired() = false
     override fun isRunning() = state.value != VpnDisplayState.DISCONNECTED
