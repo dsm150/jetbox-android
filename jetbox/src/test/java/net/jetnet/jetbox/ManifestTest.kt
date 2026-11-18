@@ -50,6 +50,17 @@ class ManifestTest {
         assertFalse("ярлык теперь у LauncherActivity", filters(a).any(::isLauncher))
     }
 
+    /**
+     * `screenOrientation="portrait"` даёт aapt обязательную `android.hardware.screen.portrait`
+     * (uses-implied-feature) — Play прятал приложение от части планшетов, ТВ и ChromeOS
+     * («доступно не на всех устройствах»). Объявлена явно с `required="false"`; ориентация та же.
+     */
+    @Test fun portraitScreenFeatureIsNotRequired() {
+        val m = Regex("<uses-feature\\b[^>]*android:name=\"android\\.hardware\\.screen\\.portrait\"[^>]*/>").find(jetbox)
+        assertNotNull("android.hardware.screen.portrait не объявлена", m)
+        assertTrue(m!!.value, m.value.contains("android:required=\"false\""))
+    }
+
     @Test fun jetBoxActivityTakesHttpsLinks() {
         val f = filters(activity(jetbox, "JetBoxActivity")).single { it.contains("box.jet-net.net") }
         assertTrue(f.contains("android:autoVerify=\"true\""))

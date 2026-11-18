@@ -209,6 +209,19 @@ class JetBoxStoreTest {
         assertEquals(box(at = 1L), b)
     }
 
+    /** Маска management касается только новых ссылок: запись 1.0.3 с адресом вне маски читается как есть. */
+    @Test fun recordOutsideMaskFromOlderBuildIsRead() {
+        val kv = MemoryStore()
+        kv.putString(
+            "jetbox.currentBox",
+            """{"managementURL":"https://netbird.example.net","exitNodeName":"one","selectedExitNode":"one","boxName":"Дом","registeredAtMillis":1}""",
+        )
+        val b = JetBoxStore(kv).currentBox
+        assertEquals(box(url = "https://netbird.example.net", at = 1L), b)
+        assertFalse(JetBoxLink.isAllowedManagement(b!!.managementURL))
+        assertEquals("netbird.example.net|one|Дом", b.identity)
+    }
+
     /** LINK-CONTRACT 1.3 §2.11: `хост|e|n` / `хост|n:<n>`, токен не участвует. */
     @Test fun identityRuleOfContract13() {
         val e = box(exit = "one").copy(deviceTokenHash = "t1")

@@ -401,6 +401,29 @@ class HomeViewModelTest {
         assertEquals(1, e.engine.startCalls)
     }
 
+    /**
+     * Запись 1.0.3 и раньше с management вне маски `*.jet-net.net` (так писали тесты и могли
+     * выдавать ссылки до 18.11.2026): читается, кнопка поднимает туннель — маска касается только
+     * новых ссылок, не сохранённого подключения.
+     */
+    @Test fun recordOutsideMaskFromOlderBuildStillStarts() = runTest {
+        val kv = MemoryStore()
+        kv.putString(
+            "jetbox.currentBox",
+            """{"managementURL":"https://netbird.example.net","exitNodeName":"home-ivanov","selectedExitNode":null,"boxName":"Дом","registeredAtMillis":1}""",
+        )
+        val store = JetBoxStore(kv)
+        val engine = FakeEngine()
+        val vm = HomeViewModel(engine, store, HomeProbeRunner(Probe(24)), backgroundScope as CoroutineScope)
+        runCurrent()
+        assertEquals("https://netbird.example.net", vm.ui.value.box?.managementURL)
+        assertEquals(PowerAction.CONNECT, vm.ui.value.power)
+        assertEquals(PressResult.Done, vm.press())
+        assertEquals(1, engine.startCalls)
+        assertEquals(0, engine.registerCalls)
+        assertEquals("https://netbird.example.net", store.currentBox?.managementURL)
+    }
+
     @Test fun pressConnectAsksConsentFirst() = runTest {
         val intent = Intent()
         val e = env { consentIntent = intent }

@@ -268,7 +268,8 @@ object JetBoxLink {
      */
     private fun managementAddress(m: String): ManagementAddress? {
         val prefix = "https://"
-        if (!m.regionMatches(0, prefix, 0, prefix.length, ignoreCase = true)) return null
+        // Только ASCII: `regionMatches(ignoreCase = true)` сводит «ſ» (U+017F) к «s» и принял бы `httpſ://`.
+        if (m.length < prefix.length || !prefix.indices.all { asciiLower(m[it]) == prefix[it] }) return null
         val rest = m.substring(prefix.length)
         if (rest.any { it == '?' || it == '#' }) return null
         val slash = rest.indexOf('/')
@@ -295,6 +296,9 @@ object JetBoxLink {
         if (!bare.endsWith(suffix) || bare.length <= suffix.length) return null
         return ManagementAddress(host, port)
     }
+
+    /** Нижний регистр только для ASCII-букв; прочие символы как есть. */
+    private fun asciiLower(c: Char): Char = if (c in 'A'..'Z') c + ('a' - 'A') else c
 
     /** Порт — только ASCII-цифры, 1–65535 (ведущие нули допустимы, как в эталоне); пустой — нет. */
     private fun parsePort(raw: String): Int? {

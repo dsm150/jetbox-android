@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        JetBoxActivity только в портрете (screenOrientation ниже) — aapt вывел бы из этого обязательную
+        android.hardware.screen.portrait, и Play прятал бы приложение от части планшетов, ТВ и ChromeOS.
+    -->
+    <uses-feature
+        android:name="android.hardware.screen.portrait"
+        android:required="false" />
+
     <application>
         <!-- Разовые настройки при старте процесса — до окна: туннель могут включить плиткой раньше. -->
         <provider

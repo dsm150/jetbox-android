@@ -118,6 +118,29 @@ class JetBoxOnboardingTest {
         assertEquals(0, env.engine.registerCalls)
     }
 
+    /** Чужая ссылка при работающем туннеле: туннель не трогаем, запись прежняя, в сеть не идём. */
+    @Test fun foreignServerKeepsRunningTunnel() = runTest {
+        val env = env()
+        env.store.currentBox = oldBox
+        env.engine.emit(VpnDisplayState.CONNECTED)
+        env.engine.routes.value = listOf(RouteInfo("old-exit", "0.0.0.0/0, ::/0", selected = true))
+        advanceUntilIdle()
+        assertTrue(env.ob.handle(url(m = "https://evil.example.com")))
+        assertEquals(Step.Failed(JetBoxFailure.ForeignServer), env.ob.step.value)
+        advanceUntilIdle()
+        env.ob.retry()
+        env.ob.dismiss()
+        advanceUntilIdle()
+        assertEquals(VpnDisplayState.CONNECTED, env.engine.state.value)
+        assertEquals(oldBox, env.store.currentBox)
+        assertEquals(0, env.engine.stopCalls)
+        assertEquals(0, env.engine.startCalls)
+        assertEquals(0, env.engine.registerCalls)
+        assertEquals(0, env.engine.isOnlineCalls)
+        assertEquals(0, env.engine.selectRouteCalls)
+        assertTrue(env.engine.deselectedRoutes.isEmpty())
+    }
+
     @Test fun notOursReturnsFalseAndKeepsStep() = runTest {
         val env = env()
         assertFalse(env.ob.handle("https://example.com/connect#k=$key"))

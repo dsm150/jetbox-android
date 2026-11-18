@@ -105,6 +105,22 @@ class ManagementMaskTest {
         assertTrue(JetBoxLink.isAllowedManagement("https://netbird.jet-net.net:1"))
     }
 
+    /**
+     * Схема сравнивается только в ASCII: `ignoreCase` Kotlin сводит «ſ» (U+017F) к «s» и принял бы
+     * `httpſ://`; эталон (`url.Parse` в Go) и iOS отказывают. Заглавная ASCII-схема — да, как в эталоне.
+     */
+    @Test fun schemeIsComparedAsAsciiOnly() {
+        for (m in listOf(
+            "http\u017F://netbird.jet-net.net", "HTTP\u017F://netbird.jet-net.net",
+            "\u0130https://netbird.jet-net.net", "http://netbird.jet-net.net", "httpss://netbird.jet-net.net",
+        )) {
+            assertFalse(m, JetBoxLink.isAllowedManagement(m))
+            assertEquals(m, JetBoxLink.Outcome.ForeignServer, JetBoxLink.parse(linkWith(m)))
+        }
+        assertTrue(JetBoxLink.isAllowedManagement("HTTPS://netbird.jet-net.net"))
+        assertTrue(JetBoxLink.isAllowedManagement("HtTpS://netbird.jet-net.net"))
+    }
+
     @Test fun universalLinkWithForeignServer() {
         assertEquals(
             JetBoxLink.Outcome.ForeignServer,
