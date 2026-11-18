@@ -1140,4 +1140,264 @@ class JetBoxOnboardingTest {
     }
 
     // endregion
+
+    // region обрыв замены подключения (решение 18.11.2026): туннель — как до сценария
+
+    private val oldLink get() = url(m = "https://old.jet-net.net", e = "old-exit", n = "Старый")
+    private val thirdLink get() = url(m = "https://third.jet-net.net", e = "third-exit", n = "Третий", k = otherKey)
+    private val foreignLink get() = url(m = "https://evil.example.com")
+    private val brokenLink = "jetbox://connect#k=not-a-uuid&m=https://nb.jet-net.net"
+
+    /** Новая ссылка, пока прежний туннель ещё гаснет: поднимаем его снова — после остановки, один раз. */
+    @Test fun newLinkWhileOldTunnelStopsRaisesItAgain() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        val before = env.store.currentBox
+        env.engine.onStop = { } // «Отключено» придёт позже
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        advanceTimeBy(1_000)
+        assertEquals(1, env.engine.stopCalls)
+
+        env.ob.handle(thirdLink)
+        assertEquals(Step.ConfirmSwitch(payload(thirdLink), "Старый"), env.ob.step.value)
+        runCurrent()
+        assertEquals("пока ядро не остановилось — не запускаем", 0, env.engine.startCalls)
+        env.engine.emit(VpnDisplayState.DISCONNECTED)
+        advanceUntilIdle()
+        assertEquals("прежний туннель поднят снова", 1, env.engine.startCalls)
+        assertEquals(VpnDisplayState.CONNECTED, env.engine.state.value)
+        assertEquals(0, env.engine.registerCalls)
+        assertEquals(before, env.store.currentBox)
+        assertEquals("key=$key", env.engine.deviceKey())
+        assertEquals(Step.ConfirmSwitch(payload(thirdLink), "Старый"), env.ob.step.value)
+    }
+
+    /** «Закрыть» (cancelFlow), пока прежний туннель гаснет: туннель поднят снова. */
+    @Test fun dismissWhileOldTunnelStopsRaisesItAgain() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        val before = env.store.currentBox
+        env.engine.onStop = { it.emit(VpnDisplayState.DISCONNECTING) }
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        advanceTimeBy(1_000)
+        env.ob.dismiss()
+        env.engine.emit(VpnDisplayState.DISCONNECTED)
+        advanceUntilIdle()
+        assertEquals(Step.Idle, env.ob.step.value)
+        assertEquals(1, env.engine.startCalls)
+        assertEquals(VpnDisplayState.CONNECTED, env.engine.state.value)
+        assertEquals(before, env.store.currentBox)
+    }
+
+    /** Обрыв, а прежнее ядро так и не остановилось: оно и так работает — второй раз не запускаем. */
+    @Test fun abortWhileCoreNeverStopsDoesNotStartTwice() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        env.engine.onStop = { }
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        advanceTimeBy(1_000)
+        env.ob.dismiss()
+        advanceUntilIdle()
+        assertEquals(0, env.engine.startCalls)
+        assertEquals(0, env.engine.registerCalls)
+        assertEquals(VpnDisplayState.CONNECTED, env.engine.state.value)
+    }
+
+    /** Новая ссылка посреди входа с новой личностью: сначала файлы прежние, потом туннель — один раз. */
+    @Test fun newLinkDuringFreshRegistrationRestoresFilesThenTunnel() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        val before = env.store.currentBox
+        val gate = CompletableDeferred<Unit>()
+        env.engine.registerGate = gate
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        runCurrent()
+        assertTrue(env.engine.gateClosed)
+
+        env.ob.handle(thirdLink)
+        advanceUntilIdle()
+        assertEquals(Step.ConfirmSwitch(payload(thirdLink), "Старый"), env.ob.step.value)
+        assertEquals("прежняя личность", "key=$key", env.engine.deviceKey())
+        assertFalse(env.engine.swap().hasLeftovers())
+        assertEquals("запуск не раньше отката файлов", 0, env.engine.refusedStarts)
+        assertEquals(1, env.engine.startCalls)
+        assertEquals(VpnDisplayState.CONNECTED, env.engine.state.value)
+        assertEquals(before, env.store.currentBox)
+    }
+
+    /** Туннель до сценария был выключен: обрыв его не включает. */
+    @Test fun abortWithTunnelOffBeforeDoesNotStartIt() = runTest {
+        val env = env()
+        env.registeredBy(oldLink, running = false)
+        val gate = CompletableDeferred<Unit>()
+        env.engine.registerGate = gate
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        runCurrent()
+        env.ob.handle(thirdLink)
+        advanceUntilIdle()
+        assertEquals(0, env.engine.stopCalls)
+        assertEquals(0, env.engine.startCalls)
+        assertEquals("key=$key", env.engine.deviceKey())
+        assertEquals(VpnDisplayState.DISCONNECTED, env.engine.state.value)
+
+        // Ошибка регистрации при выключенном туннеле — тоже не включаем.
+        env.engine.registerGate = null
+        env.engine.registerResult = Result.failure(Exception("invalid setup key"))
+        env.ob.confirmSwitch()
+        advanceUntilIdle()
+        assertTrue(env.ob.step.value is Step.Failed)
+        assertEquals(0, env.engine.startCalls)
+    }
+
+    /**
+     * Чужая ссылка посреди замены ДО точки фиксации (регистрация идёт, прежний туннель погашен): откат —
+     * сначала прежние файлы, потом прежний туннель, один раз; запись прежняя — «Подключение не изменено» правда.
+     */
+    @Test fun foreignLinkDuringRegisteringRollsBack() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        val before = env.store.currentBox
+        val gate = CompletableDeferred<Unit>()
+        env.engine.registerGate = gate
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        runCurrent()
+        assertTrue(env.ob.step.value is Step.Registering)
+
+        assertTrue(env.ob.handle(foreignLink))
+        assertEquals(Step.Failed(JetBoxFailure.ForeignServer), env.ob.step.value)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(Step.Failed(JetBoxFailure.ForeignServer), env.ob.step.value)
+        assertEquals(before, env.store.currentBox)
+        assertEquals("прежняя личность", "key=$key", env.engine.deviceKey())
+        assertFalse(env.engine.swap().hasLeftovers())
+        assertEquals(0, env.engine.refusedStarts)
+        assertEquals(1, env.engine.stopCalls)
+        assertEquals("прежний туннель поднят снова", 1, env.engine.startCalls)
+        assertEquals(VpnDisplayState.CONNECTED, env.engine.state.value)
+    }
+
+    /** Битая ссылка, пока прежний туннель гаснет (до регистрации): туннель поднят после остановки, запись прежняя. */
+    @Test fun brokenLinkWhileOldTunnelStopsRollsBack() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        val before = env.store.currentBox
+        env.engine.onStop = { }
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        advanceTimeBy(1_000)
+        assertTrue(env.ob.handle(brokenLink))
+        assertEquals(Step.Failed(JetBoxFailure.BrokenLink), env.ob.step.value)
+        runCurrent()
+        assertEquals(0, env.engine.startCalls)
+        env.engine.emit(VpnDisplayState.DISCONNECTED)
+        advanceUntilIdle()
+        assertEquals(Step.Failed(JetBoxFailure.BrokenLink), env.ob.step.value)
+        assertEquals(0, env.engine.registerCalls)
+        assertEquals(1, env.engine.startCalls)
+        assertEquals(before, env.store.currentBox)
+    }
+
+    /**
+     * Чужая ссылка, а прежние файлы вернулись не до конца: туннель не поднимаем, и «Подключение не
+     * изменено» не показываем — вместо него отказ «не удалось вернуть прежнее подключение».
+     */
+    @Test fun foreignLinkWithFailedRestoreShowsRestoreError() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        val gate = CompletableDeferred<Unit>()
+        env.engine.registerGate = gate
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        runCurrent()
+        val pending = env.engine.swap().pendingFile
+        env.engine.failDelete = { it == pending }
+        env.ob.handle(foreignLink)
+        advanceUntilIdle()
+        val step = env.ob.step.value
+        assertTrue("$step", step is Step.Failed && step.failure is JetBoxFailure.Other)
+        assertTrue((step as Step.Failed).failure.details!!.contains("прежнее подключение"))
+        assertEquals(0, env.engine.startCalls)
+        assertTrue(env.engine.swap().hasLeftovers())
+    }
+
+    /**
+     * ПОСЛЕ точки фиксации (запись новая, ждём согласие VPN): чужая ссылка — обычный отказ, прежний
+     * туннель не поднимаем (его уже нет), запись новая.
+     */
+    @Test fun foreignLinkAfterCommitDoesNotRaisePrevious() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        env.engine.consentIntent = Intent()
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        advanceUntilIdle()
+        assertEquals(Step.NeedsVpnConsent, env.ob.step.value)
+        env.ob.handle(foreignLink)
+        env.ob.onVpnConsent(true)
+        advanceUntilIdle()
+        assertEquals(Step.Failed(JetBoxFailure.ForeignServer), env.ob.step.value)
+        assertEquals(0, env.engine.startCalls)
+        assertEquals("https://nb.jet-net.net", env.store.currentBox?.managementURL)
+        assertEquals("key=$otherKey", env.engine.deviceKey())
+    }
+
+    /** ПОСЛЕ точки фиксации, на подключении: битая ссылка обрывает ожидание; второго запуска нет, запись новая. */
+    @Test fun brokenLinkWhileConnectingAfterCommitStartsOnce() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        env.engine.onStart = { } // туннель не поднимается сразу
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        runCurrent()
+        assertTrue(env.ob.step.value is Step.Connecting)
+        env.ob.handle(brokenLink)
+        advanceUntilIdle()
+        assertEquals(Step.Failed(JetBoxFailure.BrokenLink), env.ob.step.value)
+        assertEquals(1, env.engine.startCalls)
+        assertEquals("https://nb.jet-net.net", env.store.currentBox?.managementURL)
+    }
+
+    /**
+     * Ошибка подключения после записи нового подключения (точка фиксации): прежнего уже нет, туннель
+     * был включён — его и включали (start сценария); второго запуска нет, запись новая.
+     */
+    @Test fun connectErrorAfterSwapStartsOnce() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        env.engine.onStart = { it.lastError.value = "engine failed: boom" }
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        advanceUntilIdle()
+        assertTrue(env.ob.step.value is Step.Failed)
+        assertEquals(1, env.engine.stopCalls)
+        assertEquals(1, env.engine.startCalls)
+        assertEquals("https://nb.jet-net.net", env.store.currentBox?.managementURL)
+    }
+
+    /** Отмена пришла, когда хранилище уже новое: прежнего подключения нет — туннель включаем (новый), один раз. */
+    @Test fun cancelAfterCommitRaisesTunnelOnce() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        val after = CompletableDeferred<Unit>()
+        env.engine.afterRegisteredGate = after
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        runCurrent()
+        assertEquals("хранилище уже новое", "https://nb.jet-net.net", env.store.currentBox?.managementURL)
+        env.ob.dismiss()
+        advanceUntilIdle()
+        assertEquals(Step.Idle, env.ob.step.value)
+        assertEquals(1, env.engine.startCalls)
+        assertEquals("key=$otherKey", env.engine.deviceKey())
+        assertTrue(env.logs.any { it.contains("прежнего уже нет") })
+    }
+
+    // endregion
 }

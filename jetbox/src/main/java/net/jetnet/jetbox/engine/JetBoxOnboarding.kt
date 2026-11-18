@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicBoolean
 import net.jetnet.jetbox.link.JetBoxConfig
 import net.jetnet.jetbox.link.JetBoxLink
 import net.jetnet.jetbox.link.JetBoxLinkPayload
@@ -40,11 +41,14 @@ import net.jetnet.jetbox.store.JetBoxStore
  * - туннель ждём не только по CONNECTED: ошибка ядра или «нужен вход» на шаге Connecting —
  *   сразу отказ, без 45 секунд ожидания;
  * - переключение на другой JetBox или вход с новой личностью останавливает прежний туннель до
- *   регистрации; если регистрация не удалась или сценарий отменён — `AndroidEngine.register`
- *   возвращает прежние файлы профиля ядра (новая личность) или адрес сервера, а прежний туннель
- *   поднимается снова (если он был поднят и согласие на VPN есть). Прежние файлы не вернулись
- *   ([IdentityRegistration.RestoreFailed]) — туннель не поднимаем: «Попробовать снова» начнёт с
- *   возврата;
+ *   регистрации. Точка фиксации (LINK-CONTRACT 1.3 §2.11, как iOS d47f61b) — запись нового
+ *   подключения в хранилище (колбэк `engine.register`). Любой обрыв ДО неё — чужая или битая
+ *   ссылка, новая ссылка, «Закрыть», ошибка регистрации — откат к состоянию до сценария, одним путём
+ *   [returnPrevious]: `AndroidEngine.register` возвращает прежние файлы профиля (новая личность) или
+ *   адрес сервера, затем прежний туннель поднимается снова — если он был поднят и согласие на VPN
+ *   есть; гаснущий туннель сначала дожидаемся. Прежние файлы не вернулись — туннель не поднимаем:
+ *   «Попробовать снова» начнёт с возврата. ПОСЛЕ фиксации новое подключение уже текущее: обрыв или
+ *   сбой подключения — обычный отказ, прежний туннель не поднимаем (его уже нет);
  * - хранилище пишет `engine.register` колбэком — после входа, до фиксации файлов профиля
  *   ([IdentityRegistration]): так смерть процесса между ними разбирается при старте;
  * - новая личность (новый ключ WireGuard) — по отпечатку setup key, [JetBoxIdentity.plan]: экран
@@ -229,7 +233,7 @@ class JetBoxOnboarding(
 
         // Android: туннель прежнего JetBox гасим до регистрации, иначе start() застанет ядро
         // запущенным со старым конфигом (а при новой личности файлы профиля уходят из-под него).
-        // Хранилище пишет engine.register колбэком — только после успешного входа.
+        // Хранилище пишет engine.register колбэком — только после успешного входа (точка фиксации).
         val current = store.currentBox
         val switching = current != null && !current.isSameConnection(payload)
         // Новая ссылка — новый ключ WireGuard: иначе management узнает прежний пир и setup key
@@ -240,37 +244,38 @@ class JetBoxOnboarding(
         // остановленном ядре: файлы профиля нельзя менять под ним.
         val unfinished = engine.hasUnfinishedSwap()
         if (unfinished) log("JetBox: остатки оборванной замены подключения — разберём перед входом")
-        var wasUp = false
-        if ((switching || fresh || unfinished) &&
-            (engine.isRunning() || engine.state.value != VpnDisplayState.DISCONNECTED)
-        ) {
-            wasUp = true
-            log("JetBox: замена подключения — останавливаем прежний туннель")
-            engine.stop()
-            val stopped = withTimeoutOrNull(stopTimeoutMs) {
-                engine.state.first { it == VpnDisplayState.DISCONNECTED }
-                // «Отключено» приходит раньше, чем ядро выходит из цикла запуска (а при старте без
-                // сети состояние и не покидало DISCONNECTED). Регистрация при работающем ядре
-                // перепишет конфиг под ногами у прежнего туннеля, а start() застанет его запущенным.
-                while (engine.isRunning()) delay(STOP_POLL_MS)
-                true
-            }
-            if (stopped == null) {
-                log("JetBox: прежний туннель не остановился за ${stopTimeoutMs / 1000} с")
-                _step.value = Step.Failed(JetBoxFailure.TunnelFailed)
-                return
-            }
-        }
-
+        val swap = Swap()
         val registered = try {
+            if ((switching || fresh || unfinished) &&
+                (engine.isRunning() || engine.state.value != VpnDisplayState.DISCONNECTED)
+            ) {
+                swap.stopped = true
+                log("JetBox: замена подключения — останавливаем прежний туннель")
+                engine.stop()
+                if (withTimeoutOrNull(stopTimeoutMs) { awaitStopped() } == null) {
+                    // Ядро не вышло — оно и работает: второй раз не запускаем, регистрацию не начинаем.
+                    log("JetBox: прежний туннель не остановился за ${stopTimeoutMs / 1000} с")
+                    _step.value = Step.Failed(JetBoxFailure.TunnelFailed)
+                    return
+                }
+                swap.stopCompleted = true
+            }
             engine.register(payload.managementURL, payload.setupKey, freshIdentity = fresh) {
                 store.remember(payload, clock())
+                swap.committed.set(true)
             }
         } catch (e: CancellationException) {
-            // Сценарий отменён посреди регистрации (новая ссылка, «Закрыть»): файлы профиля уже
-            // вернул engine.register — прежний туннель поднимаем, раз мы его гасили. Вернул не до
-            // конца — не поднимаем; шаг не трогаем: его уже задал тот, кто отменил.
-            if (wasUp) withContext(NonCancellable) { restartPrevious("сценарий отменён") }
+            // Обрыв посреди остановки или регистрации (чужая, битая или новая ссылка, «Закрыть»): файлы
+            // профиля уже вернул engine.register — возвращаем прежний туннель. Шаг задал тот, кто отменил;
+            // правим его, только если возврат не удался, а на экране отказ ссылки («Подключение не изменено»).
+            withContext(NonCancellable) {
+                if (!returnPrevious(swap, "сценарий прерван")) {
+                    val shown = (_step.value as? Step.Failed)?.failure
+                    if (shown == JetBoxFailure.ForeignServer || shown == JetBoxFailure.BrokenLink) {
+                        _step.value = Step.Failed(JetBoxFailure.Other(RESTORE_INCOMPLETE))
+                    }
+                }
+            }
             throw e
         }
         registered.exceptionOrNull()?.let { e ->
@@ -280,7 +285,7 @@ class JetBoxOnboarding(
                 _step.value = Step.Failed(JetBoxFailure.Other(e.message ?: ""))
                 return
             }
-            if (wasUp && !restartPrevious("переключение не удалось")) {
+            if (!withContext(NonCancellable) { returnPrevious(swap, "переключение не удалось") }) {
                 _step.value = Step.Failed(JetBoxFailure.Other(RESTORE_INCOMPLETE))
                 return
             }
@@ -326,6 +331,53 @@ class JetBoxOnboarding(
             }
             ExitOutcome.None -> _step.value = Step.Protected(null)
         }
+    }
+
+    /** Замена подключения, начатая остановкой прежнего туннеля, — для единого возврата [returnPrevious]. */
+    private class Swap {
+        /** Прежний туннель был поднят, и мы его гасили. */
+        var stopped = false
+
+        /** Ядро действительно вышло. */
+        var stopCompleted = false
+
+        /** Точка фиксации пройдена: хранилище уже новое (колбэк зовётся из потока ядра). */
+        val committed = AtomicBoolean(false)
+
+        /** Возврат уже сделан — второго запуска не будет. */
+        var returned = false
+    }
+
+    /** «Отключено» и ядро вышло из цикла запуска; таймаут накладывает вызывающий. */
+    private suspend fun awaitStopped() {
+        engine.state.first { it == VpnDisplayState.DISCONNECTED }
+        // «Отключено» приходит раньше, чем ядро выходит из цикла запуска (а при старте без
+        // сети состояние и не покидало DISCONNECTED). Регистрация при работающем ядре
+        // перепишет конфиг под ногами у прежнего туннеля, а start() застанет его запущенным.
+        while (engine.isRunning()) delay(STOP_POLL_MS)
+    }
+
+    /**
+     * Единый возврат при обрыве замены подключения — туннель как до сценария, не больше одного раза.
+     * Туннель не гасили — делать нечего. Остановка ещё идёт — дожидаемся её (не дольше [stopTimeoutMs]):
+     * не дошла — ядро и так работает, второй раз не запускаем. Отмена пришла уже после точки фиксации
+     * (хранилище новое, а `register` ещё не вернулся) — прежнего подключения нет; туннель был поднят —
+     * поднимаем новое, как сделал бы сценарий (iOS после фиксации подключается без точки отмены).
+     * Иначе — [restartPrevious]. `false` — прежние файлы вернулись не до конца, туннель не поднят.
+     */
+    private suspend fun returnPrevious(swap: Swap, why: String): Boolean {
+        if (!swap.stopped || swap.returned) return true
+        swap.returned = true
+        if (!swap.stopCompleted && withTimeoutOrNull(stopTimeoutMs) { awaitStopped() } == null) {
+            log("JetBox: $why, а прежний туннель так и не остановился — второй раз не запускаем")
+            return true
+        }
+        if (swap.committed.get()) {
+            log("JetBox: $why после записи нового подключения — прежнего уже нет, поднимаем новое")
+            if (engine.needsVpnConsent() == null) engine.start()
+            return true
+        }
+        return restartPrevious(why)
     }
 
     /**

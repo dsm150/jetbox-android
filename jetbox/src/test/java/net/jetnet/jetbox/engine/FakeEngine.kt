@@ -70,6 +70,9 @@ class FakeEngine(
     /** Если задан — `register` ждёт его завершения (тест держит регистрацию «в полёте»). */
     var registerGate: CompletableDeferred<Unit>? = null
 
+    /** Если задан — успешный `register` ждёт его после записи хранилища (отмена после точки фиксации). */
+    var afterRegisteredGate: CompletableDeferred<Unit>? = null
+
     /** Что сделать при `start()` (например, сразу перевести state в CONNECTED). */
     var onStart: (FakeEngine) -> Unit = {}
     var onStop: (FakeEngine) -> Unit = {}
@@ -117,11 +120,12 @@ class FakeEngine(
             val error = login(setupKey)
             if (error != null) return Result.failure(error)
             onRegistered()
+            afterRegisteredGate?.await()
             return Result.success(Unit)
         }
         return IdentityRegistration(swap(), gate).register(
             JetBoxIdentity.fingerprint(setupKey), storedFingerprint(), { login(setupKey) }, onRegistered,
-        )
+        ).also { if (it.isSuccess) afterRegisteredGate?.await() }
     }
 
     /** «Ядро»: `NewAuth` создаёт конфиг с новым ключом, если его нет; потом вход ([registerGate], [registerResult]). */
