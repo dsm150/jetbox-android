@@ -19,7 +19,7 @@
     {"m": "netbird.jet-net.net", "ok": false, "why": "без схемы"},
     {"m": "", "ok": false, "why": "пусто"},
     {"m": "https://1.2.3.4", "ok": false, "why": "IPv4"},
-    {"m": "https://100.64.0.1:33073", "ok": false, "why": "IP меша"},
+    {"m": "https://100.64.0.1:33073", "ok": false, "why": "IP из CGNAT (100.64.0.0/10)"},
     {"m": "https://[::1]", "ok": false, "why": "IPv6"},
     {"m": "https://2130706433", "ok": false, "why": "десятичный IP"},
     {"m": "https://user@netbird.jet-net.net", "ok": false, "why": "логин в адресе"},

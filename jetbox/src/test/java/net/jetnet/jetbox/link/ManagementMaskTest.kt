@@ -10,7 +10,7 @@ import java.net.URLEncoder
 /**
  * Маска адреса management (решение владельца 18.11.2026, LINK-CONTRACT §2.3).
  * Векторы `src/test/resources/mgmt-mask.json` — байт в байт копия
- * `JetBox_Desktop/core/jetboxlink/testdata/mgmt-mask.json` (коммит JetBox_Desktop a5e5d91), общие для
+ * `JetBox_Desktop/core/jetboxlink/testdata/mgmt-mask.json` (коммит JetBox_Desktop 0096308), общие для
  * службы, iOS и Android: файл не правим, а синхронизируем с эталоном.
  */
 class ManagementMaskTest {

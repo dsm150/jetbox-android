@@ -254,7 +254,7 @@ $A --es screen SETTINGS --ez update true        # настройки со стр
   query, фрагмента и IP; хост — ASCII-имя (IDN — только punycode). Схема сравнивается только в ASCII
   (заглавная `HTTPS` — да, `httpſ` с U+017F — нет, как `url.Parse` эталона). Код — `JetBoxLink.isAllowedManagement`,
   эталон — `AllowedManagement` в JetBox_Desktop `core/jetboxlink/mask.go`; векторы
-  `jetbox/src/test/resources/mgmt-mask.json` — байт в байт копия `mgmt-mask.json` эталона (38 случаев, JetBox_Desktop a5e5d91,
+  `jetbox/src/test/resources/mgmt-mask.json` — байт в байт копия `mgmt-mask.json` эталона (38 случаев, JetBox_Desktop 0096308,
   тест `ManagementMaskTest`). Вне маски — исход `ForeignServer`: экран «Ссылка ведёт не на сервер JetBox» до
   любого вопроса, в сеть не идём, подключение и работающий туннель не трогаем. Пустой `m` — по-прежнему
   `DEFAULT_MANAGEMENT_URL`. Маска касается **только новых ссылок**: запись 1.0.3 и раньше с адресом вне
