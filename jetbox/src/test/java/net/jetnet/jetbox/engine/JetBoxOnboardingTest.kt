@@ -400,26 +400,48 @@ class JetBoxOnboardingTest {
     // endregion
     // region повторная ссылка и переключение
 
-    @Test fun sameBoxLinkRenamesImmediatelyAndGoesToReady() = runTest {
+    /**
+     * Ссылка той же коробки с новым именем: с LINK-CONTRACT 1.3 §2.11 имя — часть удостоверения,
+     * поэтому это «Другой JetBox» (экран подтверждения замены), а не тихое переименование.
+     * Хранилище до согласия не трогаем; ключ WireGuard решает отпечаток setup key.
+     */
+    @Test fun sameBoxLinkWithNewNameAsksToSwitch() = runTest {
         val env = env()
-        env.store.currentBox = JetBoxBox("https://NB.jet-net.net", "home-exit", "other-exit", "Старое", 1L)
+        val old = JetBoxBox("https://NB.jet-net.net", "home-exit", "other-exit", "Старое", 1L)
+        env.store.currentBox = old
         assertTrue(env.ob.handle(url(n = "Дача")))
-        // Как iOS: тот же JetBox — Ready без «переключить?», имя обновлено сразу, до нажатия.
-        assertEquals(Step.Ready(payload(url(n = "Дача"))), env.ob.step.value)
-        assertEquals("Дача", env.store.currentBox?.boxName)
-        assertEquals("other-exit", env.store.currentBox?.selectedExitNode)
+        assertEquals(Step.ConfirmSwitch(payload(url(n = "Дача")), "Старое"), env.ob.step.value)
+        assertEquals("до согласия запись прежняя", old, env.store.currentBox)
         advanceUntilIdle()
         assertEquals(0, env.engine.registerCalls)
 
-        // Кнопка — тот же путь, что и в первый раз (как iOS): регистрация ключом из ссылки
-        // безопасна и чинит удалённый на сервере пир. Туннель не останавливаем.
-        env.engine.emit(VpnDisplayState.CONNECTED)
         env.engine.routes.value = listOf(exit)
-        env.ob.connect()
+        env.engine.onStart = { it.emit(VpnDisplayState.CONNECTED) }
+        env.ob.confirmSwitch()
         advanceUntilIdle()
         assertEquals(Step.Protected("home-exit"), env.ob.step.value)
         assertEquals(1, env.engine.registerCalls)
-        assertEquals(0, env.engine.stopCalls)
+        assertEquals("Дача", env.store.currentBox?.boxName)
+    }
+
+    /** Запись без имени + ссылка той же коробки с именем — без вопроса, имя запоминается сразу (как iOS). */
+    @Test fun sameBoxLinkGivesNameToUnnamedRecord() = runTest {
+        val env = env()
+        env.store.currentBox = JetBoxBox("https://NB.jet-net.net", "home-exit", "other-exit", null, 1L)
+        assertTrue(env.ob.handle(url(n = "Дача")))
+        assertEquals(Step.Ready(payload(url(n = "Дача"))), env.ob.step.value)
+        assertEquals("Дача", env.store.currentBox?.boxName)
+        assertEquals("other-exit", env.store.currentBox?.selectedExitNode)
+        assertEquals(0, env.engine.registerCalls)
+    }
+
+    /** Та же коробка, то же имя (регистр хоста и токен не важны) — без вопроса. */
+    @Test fun sameBoxSameNameGoesToReadyWithoutConfirm() = runTest {
+        val env = env()
+        env.store.currentBox = JetBoxBox("https://NB.jet-net.net", "home-exit", "other-exit", "Дом", 1L)
+        assertTrue(env.ob.handle(url(t = "tok-9")))
+        assertEquals(Step.Ready(payload(url(t = "tok-9"))), env.ob.step.value)
+        assertEquals("other-exit", env.store.currentBox?.selectedExitNode)
     }
 
     @Test fun sameLinkDuringFlowIsIgnored() = runTest {
@@ -817,8 +839,8 @@ class JetBoxOnboardingTest {
     }
 
     @Test fun recordWithoutFingerprintFollowsConnectionIdentity() = runTest {
-        // (Запись 1.0.2 знает только хост|e; облачные ссылки — см. legacyRecordAndCloudLinkGetsNewKey.)
-        // Запись сборки до 1.0.3: отпечатка нет. Тот же JetBox — прежний ключ (как iOS).
+        // (Облачные ссылки без e — см. legacyRecordAndCloudLinkGetsNewKey, с общим cl-exit — legacyCloudRecordSharedExit.)
+        // Запись сборки до 1.0.3: отпечатка нет. Тот же JetBox (хост|e|n) — прежний ключ (как iOS).
         val env = env()
         env.store.currentBox = JetBoxBox("https://nb.jet-net.net", "home-exit", "home-exit", "Дом", 1L)
         env.engine.configExists = true
@@ -860,26 +882,40 @@ class JetBoxOnboardingTest {
         assertEquals(before, env.store.currentBox)
     }
 
-    @Test fun cloudLinksDifferByDeviceToken() = runTest {
-        // Облачная ссылка (LINK-CONTRACT 1.2): без e, с токеном устройства t.
-        val cloud1 = url(m = "https://netbird.jet-net.net", e = null, n = "Тариф", t = "tok-1")
-        val cloud2 = url(m = "https://netbird.jet-net.net", e = null, n = "Тариф", t = "tok-2", k = otherKey)
+    @Test fun cloudLinksDifferByNameNotToken() = runTest {
+        // Облачные абоненты делят e=cl-exit и различаются по имени (LINK-CONTRACT 1.3 §2.11); t не участвует.
+        val ivanov = url(m = "https://netbird.jet-net.net", e = "cl-exit", n = "Ivanov", t = "tok-1")
+        val petrov = url(m = "https://netbird.jet-net.net", e = "cl-exit", n = "Petrov", t = "tok-1", k = otherKey)
         val env = env()
-        env.registeredBy(cloud1)
-        env.ob.handle(cloud1)
-        assertTrue("тот же t — то же подключение", env.ob.step.value is Step.Ready)
-        env.ob.handle(cloud2)
-        assertTrue("другой t — другое подключение", env.ob.step.value is Step.ConfirmSwitch)
+        env.registeredBy(ivanov)
+        env.ob.handle(url(m = "https://netbird.jet-net.net", e = "cl-exit", n = "Ivanov", t = "tok-2"))
+        assertTrue("другой t — то же подключение", env.ob.step.value is Step.Ready)
+        env.ob.handle(petrov)
+        assertTrue("другое имя при том же cl-exit — другое подключение", env.ob.step.value is Step.ConfirmSwitch)
         env.ob.confirmSwitch()
         advanceUntilIdle()
         assertEquals(listOf(true), env.engine.registerFreshIdentity)
         assertEquals(Step.Protected("home-exit"), env.ob.step.value)
-        assertFalse("токен в журнал не попадает", env.logs.any { it.contains("tok-2") })
+        assertFalse("токен в журнал не попадает", env.logs.any { it.contains("tok-1") })
+    }
+
+    /** Перепривязка в Кабинете: новый t и новый setup key — без вопроса, но ключ WireGuard новый (отпечаток). */
+    @Test fun reboundCloudLinkNoConfirmButFreshKey() = runTest {
+        val first = url(m = "https://netbird.jet-net.net", e = "cl-exit", n = "Ivanov", t = "tok-1")
+        val rebound = url(m = "https://netbird.jet-net.net", e = "cl-exit", n = "Ivanov", t = "tok-2", k = otherKey)
+        val env = env()
+        env.registeredBy(first)
+        env.ob.handle(rebound)
+        assertEquals(Step.Ready(payload(rebound)), env.ob.step.value)
+        env.ob.connect()
+        advanceUntilIdle()
+        assertEquals(listOf(true), env.engine.registerFreshIdentity)
+        assertEquals("key=$otherKey", env.engine.deviceKey())
     }
 
     /**
-     * Запись 1.0.2 (без отпечатка и токена) + облачная ссылка с `t`: экрана «Другой JetBox» нет
-     * (формула 1.0.2), но ключ новый — `t` в старой записи не хранился, своя ли это ссылка, не узнать.
+     * Запись 1.0.2 (без отпечатка и токена) + облачная ссылка без `e` с тем же хостом и именем: экрана
+     * «Другой JetBox» нет (`хост|n:<n>` совпадает), но ключ новый — прежний только ссылке с `e`.
      */
     @Test fun legacyRecordAndCloudLinkGetsNewKey() = runTest {
         val env = env()
@@ -899,6 +935,33 @@ class JetBoxOnboardingTest {
         assertEquals(JetBoxIdentity.fingerprint(key), box.setupKeyFingerprint)
         assertEquals(payload(cloud).deviceTokenHash, box.deviceTokenHash)
         assertFalse(env.kv.getString("jetbox.currentBox")!!.contains("tok-1"))
+    }
+
+    /** Запись 1.0.2 облачного абонента с общим `e=cl-exit`: чужое имя — вопрос и новый ключ, своё — без вопроса, прежний ключ. */
+    @Test fun legacyCloudRecordSharedExit() = runTest {
+        val legacy = JetBoxBox("https://netbird.jet-net.net", "cl-exit", "cl-exit", "Ivanov", 1L)
+        val env = env()
+        env.store.currentBox = legacy
+        env.engine.configFile.writeText("key=OLD")
+        env.tunnelComesUp(listOf(exit))
+        env.ob.handle(url(m = "https://netbird.jet-net.net", e = "cl-exit", n = "Petrov", t = "tok-p"))
+        assertTrue(env.ob.step.value is Step.ConfirmSwitch)
+        env.ob.confirmSwitch()
+        advanceUntilIdle()
+        assertEquals(listOf(true), env.engine.registerFreshIdentity)
+        assertEquals("key=$key", env.engine.deviceKey())
+
+        val env2 = env()
+        env2.store.currentBox = legacy
+        env2.engine.configFile.writeText("key=OLD")
+        env2.tunnelComesUp(listOf(exit))
+        val own = url(m = "https://netbird.jet-net.net", e = "cl-exit", n = "Ivanov", t = "tok-i")
+        env2.ob.handle(own)
+        assertEquals(Step.Ready(payload(own)), env2.ob.step.value)
+        env2.ob.connect()
+        advanceUntilIdle()
+        assertEquals(listOf(false), env2.engine.registerFreshIdentity)
+        assertEquals("ключ прежний", "key=OLD", env2.engine.deviceKey())
     }
 
     /** Отмена посреди входа с новой личностью: файлы прежние, прежний туннель поднят снова. */

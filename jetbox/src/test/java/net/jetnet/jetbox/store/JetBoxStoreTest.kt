@@ -115,9 +115,11 @@ class JetBoxStoreTest {
     }
 
     @Test fun identityIsHostLowercasePlusExit() {
-        assertEquals("mgmt.jet-net.net|one", box(url = "https://MGMT.Jet-Net.net").identity)
-        // Без выхода и токена (старая ссылка) — хост + имя (LINK-CONTRACT 1.2).
+        assertEquals("mgmt.jet-net.net|one|Дом", box(url = "https://MGMT.Jet-Net.net").identity)
+        // LINK-CONTRACT 1.3 §2.11: хост|e|n; без e — хост|n:<n>; без обоих — хост|.
         assertEquals("mgmt.jet-net.net|n:Дом", box(exit = null).identity)
+        assertEquals("mgmt.jet-net.net|one|", box(name = null).identity)
+        assertEquals("mgmt.jet-net.net|", box(exit = null, name = null).identity)
     }
 
     @Test fun identityIgnoresSelectedExitNode() {
@@ -128,6 +130,7 @@ class JetBoxStoreTest {
     @Test fun identityDiffersByHostAndExit() {
         assertNotEquals(box().identity, box(url = "https://other.jet-net.net").identity)
         assertNotEquals(box().identity, box(exit = "two").identity)
+        assertNotEquals("имя — часть удостоверения и при e", box().identity, box(name = "Дача").identity)
     }
 
     @Test fun identityMatchesLinkBoxIdentity() {
@@ -140,13 +143,14 @@ class JetBoxStoreTest {
 
     // endregion
 
-    // region renamed(by:) — iOS: testSameBoxLinkRenamesStoredBox и два соседних
+    // region renamed(by:) — iOS: testSameBoxLinkRenamesStoredBox и два соседних.
+    // С ред. 1.3 (§2.11) имя входит в удостоверение: другое имя — уже «Другой JetBox»; renamed() лишь
+    // запоминает имя, которого у записи не было (как iOS named(by:)).
 
-    @Test fun sameBoxLinkRenamesStoredBox() {
+    @Test fun newNameIsOtherConnectionNotRename() {
         val link = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&n=%D0%9D%D0%BE%D0%B2%D1%8B%D0%B9")
-        val renamed = box(name = "Старый").renamed(link)
-        assertEquals("Новый", renamed?.boxName)
-        assertEquals("остальное не трогаем", box(name = "Старый").copy(boxName = "Новый"), renamed)
+        assertFalse("переименование дома — «Другой JetBox»", box(name = "Старый").isSameConnection(link))
+        assertNull(box(name = "Старый").renamed(link))
     }
 
     @Test fun otherBoxLinkDoesNotRename() {
@@ -155,25 +159,29 @@ class JetBoxStoreTest {
     }
 
     @Test fun linkWithoutNameOrWithSameNameChangesNothing() {
-        assertNull(box(name = "Дом").renamed(payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one")))
-        assertNull(
-            box(name = "Дом").renamed(
-                payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&n=%D0%94%D0%BE%D0%BC")
-            )
-        )
+        val noName = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one")
+        assertTrue("ссылка без n — сравнение по хост|e", box(name = "Дом").isSameConnection(noName))
+        assertNull(box(name = "Дом").renamed(noName))
+        val sameName = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&n=%D0%94%D0%BE%D0%BC")
+        assertTrue(box(name = "Дом").isSameConnection(sameName))
+        assertNull(box(name = "Дом").renamed(sameName))
     }
 
     @Test fun renameFromNullNameWorksAndKeepsSelectedExit() {
         val link = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&n=Home")
+        assertTrue("запись без имени — сравнение по хост|e", box(name = null, selected = "two").isSameConnection(link))
         val renamed = box(name = null, selected = "two").renamed(link)
         assertNotNull(renamed)
         assertEquals("Home", renamed!!.boxName)
         assertEquals("two", renamed.selectedExitNode)
+        val noName = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one")
+        assertTrue("без имени у обоих — то же подключение", box(name = null, selected = "two").isSameConnection(noName))
+        assertNull(box(name = null).renamed(noName))
     }
 
     // endregion
 
-    // region токен устройства и отпечаток ключа (LINK-CONTRACT 1.2, баг 13.11.2026)
+    // region токен устройства и отпечаток ключа (LINK-CONTRACT 1.2/1.3, баг 13.11.2026)
 
     @Test fun rememberStoresTokenAndFingerprintButNotKey() {
         val store = JetBoxStore(MemoryStore())
@@ -201,17 +209,22 @@ class JetBoxStoreTest {
         assertEquals(box(at = 1L), b)
     }
 
-    @Test fun identityRuleOfContract12() {
+    /** LINK-CONTRACT 1.3 §2.11: `хост|e|n` / `хост|n:<n>`, токен не участвует. */
+    @Test fun identityRuleOfContract13() {
         val e = box(exit = "one").copy(deviceTokenHash = "t1")
-        assertEquals("выход важнее токена", "mgmt.jet-net.net|one", e.identity)
+        assertEquals("токен не участвует", "mgmt.jet-net.net|one|Дом", e.identity)
+        assertEquals(e.identity, e.copy(deviceTokenHash = "t2").identity)
+        assertEquals(e.identity, e.copy(deviceTokenHash = null).identity)
         val t1 = box(exit = null).copy(deviceTokenHash = "t1")
-        assertEquals(t1.identity, t1.copy(boxName = "Другой тариф").identity)
-        assertNotEquals(t1.identity, t1.copy(deviceTokenHash = "t2").identity)
-        assertNotEquals(t1.identity, box(exit = null).identity)
-        val legacy = box(exit = null)
-        assertEquals(legacy.identity, box(exit = null, selected = null).identity)
-        assertNotEquals(legacy.identity, box(exit = null, name = "Дача").identity)
-        assertNotEquals(legacy.identity, box(exit = null, url = "https://other.jet-net.net").identity)
+        assertNotEquals("имя участвует", t1.identity, t1.copy(boxName = "Другой тариф").identity)
+        assertEquals(t1.identity, t1.copy(deviceTokenHash = "t2").identity)
+        assertEquals(t1.identity, box(exit = null).identity)
+        val noExit = box(exit = null)
+        assertEquals(noExit.identity, box(exit = null, selected = null).identity)
+        assertNotEquals(noExit.identity, box(exit = null, name = "Дача").identity)
+        assertNotEquals(noExit.identity, box(exit = null, url = "https://other.jet-net.net").identity)
+        // Облачные абоненты делят e=cl-exit — различаются по имени.
+        assertNotEquals(box(exit = "cl-exit", name = "Ivanov").identity, box(exit = "cl-exit", name = "Petrov").identity)
     }
 
     @Test fun storedTokenMatchesLinkIdentity() {
@@ -220,25 +233,75 @@ class JetBoxStoreTest {
         store.remember(p, 1L)
         assertEquals(p.boxIdentity, store.currentBox!!.identity)
         assertTrue(store.currentBox!!.isSameConnection(p))
-        assertFalse("в удостоверении — отпечаток, не токен", p.boxIdentity.contains("tok"))
+        assertFalse("токена в удостоверении нет", p.boxIdentity.contains("tok"))
+        assertFalse(p.boxIdentity.contains(store.currentBox!!.deviceTokenHash!!))
+        val rebound = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=Tariff&t=tok2&p=android")
+        assertTrue("перепривязка (новый t) — то же подключение", store.currentBox!!.isSameConnection(rebound))
     }
 
-    /** Запись ≤ 1.0.2 сравнивается по формуле 1.0.2 `хост|(e ?: "")`, как запасная ветка iOS. */
-    @Test fun legacyRecordUsesFormulaOf102() {
+    /** Запись ≤ 1.0.2 сравнивается ТЕМ ЖЕ правилом (ред. 1.3 §2.11, отдельной legacy-формулы нет). */
+    @Test fun legacyRecordUsesSameFormula() {
         val legacy = JetBoxBox("https://netbird.jet-net.net", null, null, "Тариф", 1L)
         assertTrue(legacy.isLegacy)
         val ownCloud = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=Тариф&t=tok")
         assertTrue("своя облачная ссылка с t — тот же JetBox", legacy.isSameConnection(ownCloud))
         val renamed = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=Другое")
-        assertTrue("1.0.2 имени не сравнивала", legacy.isSameConnection(renamed))
-        assertEquals("Другое", legacy.renamed(renamed)?.boxName)
-        assertFalse(legacy.isSameConnection(payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=exit")))
-        assertFalse(legacy.isSameConnection(payload("jetbox://connect#k=$key&m=https://other.jet-net.net")))
+        assertFalse("другое имя — «Другой JetBox»", legacy.isSameConnection(renamed))
+        assertNull(legacy.renamed(renamed))
+        assertFalse(legacy.isSameConnection(payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=exit&n=Тариф")))
+        assertFalse(legacy.isSameConnection(payload("jetbox://connect#k=$key&m=https://other.jet-net.net&n=Тариф")))
 
-        // Новая запись без e и t: имя — часть удостоверения, renamed() не действует.
+        // Облачная запись ≤ 1.0.2 с общим e=cl-exit: другой абонент — «Другой JetBox», тот же — нет.
+        val legacyCloud = JetBoxBox("https://netbird.jet-net.net", "cl-exit", "cl-exit", "Ivanov", 1L)
+        assertFalse(legacyCloud.isSameConnection(payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=cl-exit&n=Petrov&t=x")))
+        assertTrue(legacyCloud.isSameConnection(payload("jetbox://connect#k=$key&m=https://NetBird.jet-net.net/&e=cl-exit&n=Ivanov&t=x")))
+
+        // Новая запись (с отпечатком) — то же правило.
         val modern = legacy.copy(setupKeyFingerprint = "ab".repeat(16))
-        assertFalse(modern.isSameConnection(renamed))
-        assertNull(modern.renamed(renamed))
+        assertEquals(legacy.isSameConnection(ownCloud), modern.isSameConnection(ownCloud))
+        assertEquals(legacy.isSameConnection(renamed), modern.isSameConnection(renamed))
+    }
+
+    // region сравнение без имени (LINK-CONTRACT 1.3 §2.11): по хост|e, кроме общего выхода облака cl-…
+
+    @Test fun recordWithoutNameAndBoxLinkWithNameIsSame() {
+        val link = payload("jetbox://connect#k=$key&m=https://MGMT.jet-net.net/&e=one&n=Дом&t=x")
+        assertTrue(box(name = null).isSameConnection(link))
+        assertTrue(box(name = "").isSameConnection(link))
+        assertFalse("другой выход — другое подключение", box(exit = "two", name = null).isSameConnection(link))
+        assertFalse("другой хост", box(url = "https://other.jet-net.net", name = null).isSameConnection(link))
+    }
+
+    @Test fun recordWithNameAndBoxLinkWithoutNameIsSame() {
+        assertTrue(box(name = "Дом").isSameConnection(payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one")))
+        assertFalse(box(name = "Дом").isSameConnection(payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=two")))
+    }
+
+    @Test fun sharedCloudExitWithoutNameOnEitherSideAsks() {
+        val named = box(url = "https://netbird.jet-net.net", exit = "cl-exit", name = "JetBox · ivan")
+        val unnamed = box(url = "https://netbird.jet-net.net", exit = "cl-exit", name = null)
+        val linkNoName = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=cl-exit&t=x")
+        val linkNamed = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=cl-exit&n=JetBox%20%C2%B7%20ivan&t=x")
+        assertFalse("запись с именем, ссылка без n", named.isSameConnection(linkNoName))
+        assertFalse("запись без имени, ссылка с n", unnamed.isSameConnection(linkNamed))
+        assertFalse("любой cl-… — общий выход", box(exit = "cl-eu", name = null).isSameConnection(
+            payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=cl-eu&n=A")))
+        assertTrue("тот же абонент", named.isSameConnection(linkNamed))
+        // Без имени с обеих сторон строки удостоверения совпадают (`хост|cl-exit|`) — как iOS, вопроса нет.
+        assertTrue(unnamed.isSameConnection(linkNoName))
+    }
+
+    @Test fun differentNamesOnSharedCloudExitAsk() {
+        val ivan = box(url = "https://netbird.jet-net.net", exit = "cl-exit", name = "JetBox · ivan")
+        assertFalse(ivan.isSameConnection(payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=cl-exit&n=JetBox%20%C2%B7%20petr")))
+    }
+
+    @Test fun withoutExitComparedByStringOnly() {
+        val named = box(exit = null, name = "Дом")
+        assertFalse("без e имя не отбрасываем", named.isSameConnection(payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net")))
+        assertFalse(box(exit = null, name = null).isSameConnection(payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&n=Дом")))
+        assertTrue(box(exit = null, name = null).isSameConnection(payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&t=x")))
+        assertFalse("у записи нет e, у ссылки есть", box(exit = null, name = null).isSameConnection(payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one")))
     }
 
     // endregion
