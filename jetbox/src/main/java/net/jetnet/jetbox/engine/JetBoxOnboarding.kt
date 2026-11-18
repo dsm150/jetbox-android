@@ -318,7 +318,13 @@ class JetBoxOnboarding(
             return
         }
 
-        // 5. Выход в интернет.
+        // 5. Выход в интернет. `x=0` (облако, LINK-CONTRACT §2.10): не включаем и не спрашиваем —
+        // клиент включит сам (как iOS).
+        if (!payload.enablesDefaultExit) {
+            log("JetBox: x=0 — выход в интернет не включаем")
+            _step.value = Step.Protected(null)
+            return
+        }
         _step.value = Step.SelectingExit(payload)
         when (val outcome = resolveExitNode(payload)) {
             is ExitOutcome.Selected -> {

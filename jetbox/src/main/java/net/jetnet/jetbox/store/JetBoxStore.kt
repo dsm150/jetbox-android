@@ -18,7 +18,8 @@ class JetBoxStore(private val kv: KeyValueStore) {
         currentBox = JetBoxBox(
             managementURL = payload.managementURL,
             exitNodeName = payload.exitNodeName,
-            selectedExitNode = payload.exitNodeName,
+            // `x=0`: выход из ссылки только разрешён, не включён (LINK-CONTRACT §2.10, iOS ba59d14).
+            selectedExitNode = if (payload.enablesDefaultExit) payload.exitNodeName else null,
             boxName = payload.boxName,
             registeredAtMillis = nowMillis,
             deviceTokenHash = payload.deviceTokenHash,

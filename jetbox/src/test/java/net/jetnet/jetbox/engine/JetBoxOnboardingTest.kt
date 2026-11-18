@@ -1400,4 +1400,55 @@ class JetBoxOnboardingTest {
     }
 
     // endregion
+
+    // region x=0 (LINK-CONTRACT §2.10): выход в интернет после подключения не включать
+
+    @Test fun xZeroSkipsExitSelection() = runTest {
+        val env = env()
+        env.tunnelComesUp(listOf(exit))
+        val link = url() + "&x=0"
+        env.ob.handle(link)
+        env.ob.connect()
+        advanceUntilIdle()
+        assertEquals(Step.Protected(null), env.ob.step.value)
+        assertEquals(0, env.engine.selectRouteCalls)
+        assertEquals(0, env.engine.refreshCalls)
+        assertEquals("home-exit", env.store.currentBox?.exitNodeName)
+        assertNull(env.store.currentBox?.selectedExitNode)
+    }
+
+    @Test fun xZeroSkipsChooseExitScreen() = runTest {
+        val env = env()
+        env.tunnelComesUp(listOf(RouteInfo("a-exit", "0.0.0.0/0", false), RouteInfo("z-exit", "0.0.0.0/0", false)))
+        env.ob.handle(url(e = null) + "&x=0")
+        env.ob.connect()
+        advanceUntilIdle()
+        assertEquals(Step.Protected(null), env.ob.step.value)
+        assertEquals(0, env.engine.selectRouteCalls)
+    }
+
+    /** Повтор той же ссылки x=0 выход не включает; выбранный руками выход сценарий не трогает. */
+    @Test fun xZeroAgainDoesNotEnableExitAndManualChoiceStays() = runTest {
+        val env = env()
+        env.tunnelComesUp(listOf(exit))
+        val link = url() + "&x=0"
+        env.ob.handle(link)
+        env.ob.connect()
+        advanceUntilIdle()
+        env.ob.dismiss()
+
+        // Клиент включил выход руками (лист выхода главного экрана: selectRoute + rememberExitNode).
+        env.engine.routes.value = listOf(exit.copy(selected = true))
+        env.store.rememberExitNode("home-exit")
+
+        env.ob.handle(link)
+        assertEquals(Step.Ready(payload(link)), env.ob.step.value)
+        env.ob.connect()
+        advanceUntilIdle()
+        assertEquals(Step.Protected(null), env.ob.step.value)
+        assertEquals(0, env.engine.selectRouteCalls)
+        assertTrue("сценарий выход не снимает", env.engine.deselectedRoutes.isEmpty())
+    }
+
+    // endregion
 }

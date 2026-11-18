@@ -354,4 +354,25 @@ class JetBoxLinkTest {
     }
 
     // endregion
+
+    // region x — выход по умолчанию (LINK-CONTRACT §2.10, iOS ba59d14)
+
+    @Test fun xZeroDisablesDefaultExit() {
+        val base = "jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=cl-exit&n=Tariff"
+        assertFalse(payload("$base&x=0").enablesDefaultExit)
+        assertFalse("имена параметров регистронезависимы", payload("$base&X=0").enablesDefaultExit)
+        assertTrue(payload("$base&x=1").enablesDefaultExit)
+        assertTrue("пустое значение — как раньше", payload("$base&x=").enablesDefaultExit)
+        assertTrue("нет x — как раньше", payload(base).enablesDefaultExit)
+        assertTrue("любое другое значение — как раньше", payload("$base&x=00").enablesDefaultExit)
+        assertTrue("первый повтор побеждает", payload("$base&x=1&x=0").enablesDefaultExit)
+    }
+
+    @Test fun xIsNotPartOfIdentity() {
+        val base = "jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=cl-exit&n=Tariff"
+        assertEquals(payload(base).boxIdentity, payload("$base&x=0").boxIdentity)
+        assertEquals("cl-exit", payload("$base&x=0").exitNodeName)
+    }
+
+    // endregion
 }

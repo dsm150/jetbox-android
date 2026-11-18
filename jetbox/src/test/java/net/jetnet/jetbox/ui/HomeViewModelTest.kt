@@ -615,4 +615,24 @@ class HomeViewModelTest {
         assertEquals(0, site.calls)
         job.cancel()
     }
+
+    // x=0 (LINK-CONTRACT §2.10): запись без выбранного выхода — главный экран выход включённым не показывает,
+    // включить его руками можно.
+    @Test fun xZeroBoxShowsNoExitAndManualSelectWorks() = runTest {
+        val e = env(withBox = false)
+        val link = "jetbox://connect#k=11111111-2222-4333-8444-555555555555&m=https://netbird.jet-net.net&e=cl-exit&n=Tariff&x=0"
+        e.store.remember((net.jetnet.jetbox.link.JetBoxLink.parse(link) as net.jetnet.jetbox.link.JetBoxLink.Outcome.Payload).payload, 1L)
+        e.vm.reloadBox()
+        e.engine.routes.value = listOf(RouteInfo("cl-exit", "0.0.0.0/0", false))
+        e.engine.connect()
+        runCurrent()
+        assertNull(e.vm.ui.value.box?.selectedExitNode)
+        assertNull(e.vm.ui.value.selectedExit)
+        assertEquals(listOf("cl-exit"), e.vm.ui.value.exits)
+
+        e.vm.selectExit("cl-exit")
+        runCurrent()
+        assertEquals(listOf("cl-exit"), e.engine.selectedRoutes)
+        assertEquals("cl-exit", e.store.currentBox?.selectedExitNode)
+    }
 }

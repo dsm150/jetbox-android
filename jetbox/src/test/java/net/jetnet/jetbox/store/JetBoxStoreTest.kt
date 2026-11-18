@@ -318,4 +318,19 @@ class JetBoxStoreTest {
     }
 
     // endregion
+
+    // region x=0 (LINK-CONTRACT §2.10): выход из ссылки только разрешён, не включён
+
+    @Test fun rememberWithXZeroDoesNotSelectExit() {
+        val store = JetBoxStore(MemoryStore())
+        store.remember(payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=cl-exit&n=Tariff&x=0"), 5L)
+        val b = store.currentBox!!
+        assertEquals("удостоверение — из ссылки", "cl-exit", b.exitNodeName)
+        assertNull("выход не включён", b.selectedExitNode)
+
+        store.remember(payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=cl-exit&n=Tariff"), 6L)
+        assertEquals("без x — как раньше", "cl-exit", store.currentBox!!.selectedExitNode)
+    }
+
+    // endregion
 }

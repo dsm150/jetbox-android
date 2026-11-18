@@ -29,6 +29,12 @@ data class JetBoxLinkPayload(
      * только отпечаток ([deviceTokenHash]); в журнал — только маска.
      */
     val deviceToken: String? = null,
+    /**
+     * `x=0` (LINK-CONTRACT §2.10, как iOS `enablesDefaultExit`): после подключения выход в интернет НЕ
+     * включать — выбор выхода пропускается целиком. Любое другое значение или нет `x` — `true`. В
+     * удостоверение не входит.
+     */
+    val enablesDefaultExit: Boolean = true,
 ) {
     /** Маска ключа для экрана и логов: видны только последние 4 символа. */
     val maskedKey: String
@@ -51,7 +57,7 @@ data class JetBoxLinkPayload(
     // Ключ и токен не должны попасть в логи через toString().
     override fun toString(): String =
         "JetBoxLinkPayload(setupKey=$maskedKey, managementURL=$managementURL, exitNodeName=$exitNodeName, " +
-            "boxName=$boxName, deviceToken=${deviceToken?.let(::maskSecret)})"
+            "boxName=$boxName, deviceToken=${deviceToken?.let(::maskSecret)}, enablesDefaultExit=$enablesDefaultExit)"
 }
 
 /** Единая маска секрета для экрана и логов: видны только последние 4 символа. */
@@ -163,6 +169,7 @@ object JetBoxLink {
                 exitNodeName = params["e"]?.takeIf { it.isNotEmpty() },
                 boxName = params["n"]?.takeIf { it.isNotEmpty() },
                 deviceToken = params["t"]?.takeIf { it.isNotEmpty() },
+                enablesDefaultExit = params["x"] != "0",
             )
         )
     }
