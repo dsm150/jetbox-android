@@ -1325,6 +1325,12 @@ class JetBoxOnboardingTest {
         assertTrue((step as Step.Failed).failure.details!!.contains("прежнее подключение"))
         assertEquals(0, env.engine.startCalls)
         assertTrue(env.engine.swap().hasLeftovers())
+        // Повтор не доделывает прерванную замену: кнопки нет, а retry() закрывает экран.
+        assertFalse(step.failure.canRetry)
+        env.ob.retry()
+        advanceUntilIdle()
+        assertEquals(Step.Idle, env.ob.step.value)
+        assertEquals(1, env.engine.registerCalls)
     }
 
     /**
@@ -1410,9 +1416,8 @@ class JetBoxOnboardingTest {
         env.ob.handle(link)
         env.ob.connect()
         advanceUntilIdle()
-        assertEquals(Step.Protected(null), env.ob.step.value)
+        assertEquals("выход есть, но не выбран — «как обычно»", Step.Protected(null), env.ob.step.value)
         assertEquals(0, env.engine.selectRouteCalls)
-        assertEquals(0, env.engine.refreshCalls)
         assertEquals("home-exit", env.store.currentBox?.exitNodeName)
         assertNull(env.store.currentBox?.selectedExitNode)
     }
@@ -1437,17 +1442,140 @@ class JetBoxOnboardingTest {
         advanceUntilIdle()
         env.ob.dismiss()
 
-        // Клиент включил выход руками (лист выхода главного экрана: selectRoute + rememberExitNode).
+        // Клиент включил выход руками (лист выхода главного экрана: selectRoute + rememberExitNode);
+        // ядро держит выбор и после переподключения.
         env.engine.routes.value = listOf(exit.copy(selected = true))
         env.store.rememberExitNode("home-exit")
+        env.tunnelComesUp(listOf(exit.copy(selected = true)))
 
         env.ob.handle(link)
         assertEquals(Step.Ready(payload(link)), env.ob.step.value)
         env.ob.connect()
         advanceUntilIdle()
-        assertEquals(Step.Protected(null), env.ob.step.value)
+        assertEquals("экран — по фактическому выходу", Step.Protected("home-exit"), env.ob.step.value)
         assertEquals(0, env.engine.selectRouteCalls)
         assertTrue("сценарий выход не снимает", env.engine.deselectedRoutes.isEmpty())
+        assertEquals("выбор руками сохранён", "home-exit", env.store.currentBox?.selectedExitNode)
+    }
+
+    /** x=0 и другое подключение: прежний выбор выхода не переносится. */
+    @Test fun xZeroOtherConnectionDoesNotInheritExit() = runTest {
+        val env = env()
+        env.registeredBy(oldLink, running = false)
+        env.store.rememberExitNode("old-exit")
+        env.ob.handle(url(k = otherKey) + "&x=0")
+        env.ob.confirmSwitch()
+        advanceUntilIdle()
+        assertEquals(Step.Protected(null), env.ob.step.value)
+        assertNull(env.store.currentBox?.selectedExitNode)
+    }
+
+    // endregion
+
+    // region правки повторного ревью (обрыв замены)
+
+    /**
+     * Ссылка B и сразу «Переключить», пока отменённый сценарий A ещё возвращает прежний туннель P:
+     * сценарий B ждёт конца возврата — P поднят один раз, затем замена на B проходит.
+     */
+    @Test fun confirmDuringReturnOfPreviousWaitsForIt() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        env.engine.onStop = { }
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        advanceTimeBy(1_000)
+        env.ob.handle(thirdLink)
+        env.ob.confirmSwitch()
+        advanceTimeBy(1_000)
+        assertEquals("B ещё не гасит: ждёт возврата A", 1, env.engine.stopCalls)
+        env.engine.onStop = { it.emit(VpnDisplayState.DISCONNECTED) }
+        env.engine.emit(VpnDisplayState.DISCONNECTED)
+        advanceUntilIdle()
+        assertEquals(Step.Protected("home-exit"), env.ob.step.value)
+        assertEquals("https://third.jet-net.net", env.store.currentBox?.managementURL)
+        assertEquals(1, env.engine.registerCalls)
+        assertEquals(listOf(true), env.engine.registerFreshIdentity)
+        assertEquals("P поднят один раз, затем B", 2, env.engine.startCalls)
+        assertEquals(2, env.engine.stopCalls)
+        assertEquals(0, env.engine.refusedStarts)
+    }
+
+    /** Туннель до сценария выключен, откат файлов не удался: «Подключение не изменено» не показываем. */
+    @Test fun failedRestoreWithTunnelOffReplacesRefusal() = runTest {
+        val env = env()
+        env.registeredBy(oldLink, running = false)
+        val gate = CompletableDeferred<Unit>()
+        env.engine.registerGate = gate
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        runCurrent()
+        val pending = env.engine.swap().pendingFile
+        env.engine.failDelete = { it == pending }
+        env.ob.handle(foreignLink)
+        advanceUntilIdle()
+        val step = env.ob.step.value
+        assertTrue("$step", step is Step.Failed && step.failure is JetBoxFailure.Other)
+        assertFalse((step as Step.Failed).failure.canRetry)
+        assertEquals(0, env.engine.startCalls)
+    }
+
+    /** Экран закрыли, пока сценарий после ошибки регистрации возвращал прежний туннель: Idle не перетирается. */
+    @Test fun dismissDuringReturnAfterRegisterErrorKeepsIdle() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        val gate = CompletableDeferred<Unit>()
+        env.engine.registerGate = gate
+        env.engine.registerResult = Result.failure(Exception("invalid setup key"))
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        runCurrent()
+        val check = CompletableDeferred<Unit>()
+        env.engine.unfinishedSwapGate = check
+        gate.complete(Unit)
+        runCurrent()
+        env.ob.dismiss()
+        check.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(Step.Idle, env.ob.step.value)
+        assertEquals("прежний туннель всё равно поднят", 1, env.engine.startCalls)
+    }
+
+    /**
+     * Обрыв, пока прежний туннель гаснет, а ядро не вышло за отведённое время: возврат не сделан — вместо
+     * «Подключение не изменено» отказ «не удалось вернуть прежнее подключение», без повтора.
+     */
+    @Test fun foreignLinkWhileCoreNeverStopsShowsRestoreError() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        env.engine.onStop = { }
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        advanceTimeBy(1_000)
+        env.ob.handle(foreignLink)
+        advanceUntilIdle()
+        val step = env.ob.step.value
+        assertTrue("$step", step is Step.Failed && step.failure is JetBoxFailure.Other)
+        assertTrue((step as Step.Failed).failure.details!!.contains("вручную"))
+        assertFalse(step.failure.canRetry)
+        assertEquals(0, env.engine.startCalls)
+    }
+
+    /** Ядро уже работает к моменту возврата (always-on, плитка): второй start() не зовём — он стёр бы пиры. */
+    @Test fun restartPreviousSkipsRunningCore() = runTest {
+        val env = env()
+        env.registeredBy(oldLink)
+        val gate = CompletableDeferred<Unit>()
+        env.engine.registerGate = gate
+        env.engine.registerResult = Result.failure(Exception("invalid setup key"))
+        env.ob.handle(url(k = otherKey))
+        env.ob.confirmSwitch()
+        runCurrent()
+        env.engine.running = true // ядро подняли мимо сценария
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(env.ob.step.value is Step.Failed)
+        assertEquals(0, env.engine.startCalls)
     }
 
     // endregion

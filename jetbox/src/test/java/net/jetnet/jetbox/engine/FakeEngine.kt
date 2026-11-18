@@ -137,7 +137,13 @@ class FakeEngine(
 
     override suspend fun hasDeviceConfig(): Boolean = configExists
 
-    override suspend fun hasUnfinishedSwap(): Boolean = swap().hasLeftovers()
+    /** Если задан — `hasUnfinishedSwap` ждёт его (проверка «в полёте», как у `AndroidEngine` на IO). */
+    var unfinishedSwapGate: CompletableDeferred<Unit>? = null
+
+    override suspend fun hasUnfinishedSwap(): Boolean {
+        unfinishedSwapGate?.await()
+        return swap().hasLeftovers()
+    }
 
     override fun needsVpnConsent(): Intent? {
         needsVpnConsentCalls++

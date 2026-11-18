@@ -17,13 +17,17 @@ sealed class JetBoxFailure {
 
     /** Android: отказ в системном диалоге VPN (в iOS это часть текста tunnelFailed). */
     data object VpnPermissionDenied : JetBoxFailure() { override val details: String? = null }
-    data class Other(override val details: String) : JetBoxFailure()
+    /**
+     * [retryable] = false — повтор не имеет смысла или вреден (прерванную замену подключения повтор
+     * доделал бы): кнопки «Попробовать снова» нет.
+     */
+    data class Other(override val details: String, val retryable: Boolean = true) : JetBoxFailure()
 
     /** Технические подробности для поддержки (у отказов без текста ядра — null). */
     abstract val details: String?
 
     /** Повтор имеет смысл не всегда: испорченную или чужую ссылку повторять нечем. */
-    val canRetry: Boolean get() = this !is BrokenLink && this !is ForeignServer
+    val canRetry: Boolean get() = this !is BrokenLink && this !is ForeignServer && (this as? Other)?.retryable != false
 
     companion object {
         private val CERT_MARKERS = listOf("x509", "certificate")

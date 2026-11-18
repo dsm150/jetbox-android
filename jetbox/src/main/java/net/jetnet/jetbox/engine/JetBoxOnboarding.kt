@@ -6,7 +6,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -108,6 +110,13 @@ class JetBoxOnboarding(
     val step: StateFlow<Step> = _step.asStateFlow()
 
     private var flowJob: Job? = null
+
+    /**
+     * Последний запущенный сценарий, даже отменённый: новый ждёт его конца — отменённый мог ещё
+     * возвращать прежний туннель (ждать остановки, откатывать файлы), и два сценария не должны гасить и
+     * поднимать ядро одновременно.
+     */
+    private var lastJob: Job? = null
 
     /** Ответ системного диалога VPN, которого ждёт сценарий на шаге [Step.NeedsVpnConsent]. */
     private var consent: CompletableDeferred<Boolean>? = null
@@ -211,8 +220,15 @@ class JetBoxOnboarding(
     // region Сценарий целиком
 
     private fun start(payload: JetBoxLinkPayload) {
+        val previous = lastJob
         cancelFlow()
-        flowJob = scope.launch { run(payload) }
+        flowJob = scope.launch {
+            // Отменённый сценарий доделывает возврат в NonCancellable — ждём его, даже если отменят и нас
+            // (иначе следующий сценарий не дождался бы предыдущего).
+            withContext(NonCancellable) { previous?.join() }
+            currentCoroutineContext().ensureActive()
+            run(payload)
+        }.also { lastJob = it }
     }
 
     private fun cancelFlow() {
@@ -268,12 +284,15 @@ class JetBoxOnboarding(
             // Обрыв посреди остановки или регистрации (чужая, битая или новая ссылка, «Закрыть»): файлы
             // профиля уже вернул engine.register — возвращаем прежний туннель. Шаг задал тот, кто отменил;
             // правим его, только если возврат не удался, а на экране отказ ссылки («Подключение не изменено»).
+            // Туннель до сценария был выключен — returnPrevious делать нечего, но откат файлов мог не удаться.
             withContext(NonCancellable) {
-                if (!returnPrevious(swap, "сценарий прерван")) {
-                    val shown = (_step.value as? Step.Failed)?.failure
-                    if (shown == JetBoxFailure.ForeignServer || shown == JetBoxFailure.BrokenLink) {
-                        _step.value = Step.Failed(JetBoxFailure.Other(RESTORE_INCOMPLETE))
-                    }
+                val problem = returnPrevious(swap, "сценарий прерван")
+                    ?: RESTORE_INCOMPLETE.takeIf { engine.hasUnfinishedSwap() }
+                val shown = (_step.value as? Step.Failed)?.failure
+                if (problem != null && (shown == JetBoxFailure.ForeignServer || shown == JetBoxFailure.BrokenLink)) {
+                    // Повтор доделал бы прерванную замену — его нет (ни кнопки, ни прежней ссылки).
+                    lastPayload = null
+                    _step.value = Step.Failed(JetBoxFailure.Other(problem, retryable = false))
                 }
             }
             throw e
@@ -285,8 +304,11 @@ class JetBoxOnboarding(
                 _step.value = Step.Failed(JetBoxFailure.Other(e.message ?: ""))
                 return
             }
-            if (!withContext(NonCancellable) { returnPrevious(swap, "переключение не удалось") }) {
-                _step.value = Step.Failed(JetBoxFailure.Other(RESTORE_INCOMPLETE))
+            val problem = withContext(NonCancellable) { returnPrevious(swap, "переключение не удалось") }
+            // Экран закрыли или пришла другая ссылка, пока возвращали туннель — их шаг не перетираем.
+            currentCoroutineContext().ensureActive()
+            if (problem != null) {
+                _step.value = Step.Failed(JetBoxFailure.Other(problem))
                 return
             }
             _step.value = Step.Failed(
@@ -319,10 +341,12 @@ class JetBoxOnboarding(
         }
 
         // 5. Выход в интернет. `x=0` (облако, LINK-CONTRACT §2.10): не включаем и не спрашиваем —
-        // клиент включит сам (как iOS).
+        // клиент включит сам (как iOS). Экран — по фактическому выходу: выбранный руками раньше ядро
+        // применяет само, и «интернет идёт как обычно» тогда было бы неправдой.
         if (!payload.enablesDefaultExit) {
             log("JetBox: x=0 — выход в интернет не включаем")
-            _step.value = Step.Protected(null)
+            val routes = withTimeoutOrNull(routesTimeoutMs) { awaitExitRoutes() } ?: engine.routes.value
+            _step.value = Step.Protected(routes.firstOrNull { it.isExitNode && it.selected }?.name)
             return
         }
         _step.value = Step.SelectingExit(payload)
@@ -365,25 +389,29 @@ class JetBoxOnboarding(
 
     /**
      * Единый возврат при обрыве замены подключения — туннель как до сценария, не больше одного раза.
-     * Туннель не гасили — делать нечего. Остановка ещё идёт — дожидаемся её (не дольше [stopTimeoutMs]):
-     * не дошла — ядро и так работает, второй раз не запускаем. Отмена пришла уже после точки фиксации
-     * (хранилище новое, а `register` ещё не вернулся) — прежнего подключения нет; туннель был поднят —
-     * поднимаем новое, как сделал бы сценарий (iOS после фиксации подключается без точки отмены).
-     * Иначе — [restartPrevious]. `false` — прежние файлы вернулись не до конца, туннель не поднят.
+     * `null` — вернули (или возвращать нечего: туннель не гасили); иначе — подробности отказа.
+     *
+     * * Остановка ещё идёт — дожидаемся её (не дольше [stopTimeoutMs]). Не дошла — туннель не трогаем
+     *   (ядро ещё работает или выйдет позже по уже отправленному stop()), но и «Подключение не изменено»
+     *   не обещаем: [STOP_TIMEOUT] — «включите защиту вручную».
+     * * Отмена пришла ровно после точки фиксации (хранилище уже новое, а `register` ещё не вернулся) —
+     *   прежнего подключения нет; туннель был поднят — поднимаем новое, как сделал бы сценарий (iOS после
+     *   фиксации подключается без точки отмены).
+     * * Иначе — [restartPrevious]; прежние файлы вернулись не до конца — [RESTORE_INCOMPLETE].
      */
-    private suspend fun returnPrevious(swap: Swap, why: String): Boolean {
-        if (!swap.stopped || swap.returned) return true
+    private suspend fun returnPrevious(swap: Swap, why: String): String? {
+        if (!swap.stopped || swap.returned) return null
         swap.returned = true
         if (!swap.stopCompleted && withTimeoutOrNull(stopTimeoutMs) { awaitStopped() } == null) {
-            log("JetBox: $why, а прежний туннель так и не остановился — второй раз не запускаем")
-            return true
+            log("JetBox: $why, а прежний туннель так и не остановился — не запускаем, просим включить вручную")
+            return STOP_TIMEOUT
         }
         if (swap.committed.get()) {
             log("JetBox: $why после записи нового подключения — прежнего уже нет, поднимаем новое")
-            if (engine.needsVpnConsent() == null) engine.start()
-            return true
+            if (engine.needsVpnConsent() == null && !engine.isRunning()) engine.start()
+            return null
         }
-        return restartPrevious(why)
+        return if (restartPrevious(why)) null else RESTORE_INCOMPLETE
     }
 
     /**
@@ -397,7 +425,8 @@ class JetBoxOnboarding(
             return false
         }
         log("JetBox: $why — возвращаем прежний JetBox")
-        if (engine.needsVpnConsent() == null) engine.start()
+        // Ядро уже подняли мимо сценария (always-on, плитка): второй start() стёр бы пиры и маршруты.
+        if (engine.needsVpnConsent() == null && !engine.isRunning()) engine.start()
         return true
     }
 
@@ -536,6 +565,8 @@ class JetBoxOnboarding(
         private const val STOP_POLL_MS = 200L
         private const val RESTORE_INCOMPLETE =
             "не удалось вернуть прежнее подключение: файлы профиля вернулись не до конца"
+        private const val STOP_TIMEOUT =
+            "не удалось вернуть прежнее подключение: прежний туннель не остановился вовремя — включите защиту вручную"
         private val START_LABELS = setOf(EngineApi.VPN_PERMISSION_REQUIRED, EngineApi.FOREGROUND_START_NOT_ALLOWED)
     }
 }

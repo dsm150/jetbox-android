@@ -332,5 +332,16 @@ class JetBoxStoreTest {
         assertEquals("без x — как раньше", "cl-exit", store.currentBox!!.selectedExitNode)
     }
 
+    @Test fun rememberWithXZeroKeepsManualExitOfSameConnection() {
+        val store = JetBoxStore(MemoryStore())
+        val link = "jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=cl-exit&n=Tariff&x=0"
+        store.remember(payload(link), 5L)
+        store.rememberExitNode("cl-exit")
+        store.remember(payload(link), 6L)
+        assertEquals("то же подключение — выбор руками сохранён", "cl-exit", store.currentBox!!.selectedExitNode)
+        store.remember(payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=cl-exit&n=Other&x=0"), 7L)
+        assertNull("другое подключение — не переносится", store.currentBox!!.selectedExitNode)
+    }
+
     // endregion
 }

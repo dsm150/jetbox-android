@@ -13,13 +13,17 @@ class JetBoxStore(private val kv: KeyValueStore) {
         get() = kv.getString(BOX_KEY)?.let { JetBoxBox.fromJson(it) }
         set(value) = kv.putString(BOX_KEY, value?.toJson())
 
-    /** После успешной регистрации: новый текущий JetBox из ссылки (без ключа). */
+    /**
+     * После успешной регистрации: новый текущий JetBox из ссылки (без ключа). `x=0` — выход из ссылки не
+     * включён; у того же подключения выбранный руками выход сохраняется (повтор ссылки его не обнуляет).
+     */
     fun remember(payload: JetBoxLinkPayload, nowMillis: Long) {
+        val kept = currentBox?.takeIf { it.isSameConnection(payload) }?.selectedExitNode
         currentBox = JetBoxBox(
             managementURL = payload.managementURL,
             exitNodeName = payload.exitNodeName,
             // `x=0`: выход из ссылки только разрешён, не включён (LINK-CONTRACT §2.10, iOS ba59d14).
-            selectedExitNode = if (payload.enablesDefaultExit) payload.exitNodeName else null,
+            selectedExitNode = if (payload.enablesDefaultExit) payload.exitNodeName else kept,
             boxName = payload.boxName,
             registeredAtMillis = nowMillis,
             deviceTokenHash = payload.deviceTokenHash,
