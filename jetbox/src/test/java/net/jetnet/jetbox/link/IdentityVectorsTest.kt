@@ -10,7 +10,7 @@ import org.junit.runners.Parameterized
 
 /**
  * Удостоверение подключения (LINK-CONTRACT 1.3 §2.11) по общим векторам `src/test/resources/identity.json` —
- * байт в байт копия `JetBox_iOS/jetbox-ios/NetBirdTests/identity.json` (коммит JetBox_iOS c04730e):
+ * байт в байт копия `JetBox_iOS/jetbox-ios/NetBirdTests/identity.json` (коммит JetBox_iOS d47f61b):
  * файл не правим, а синхронизируем с iOS. Ссылка целиком — через [JetBoxLink.parse] → `payload.boxIdentity`;
  * запись хранилища из той же ссылки даёт ту же строку. Сравнение «без имени» — в JetBoxStoreTest.
  */
@@ -45,7 +45,7 @@ class IdentityVectorsTest(
     }
 
     @Test fun vectorsFileIsComplete() {
-        assertEquals(14, vectors.getJSONArray("cases").length())
+        assertEquals(15, vectors.getJSONArray("cases").length())
     }
 
     @Test fun linkIdentity() {

@@ -34,6 +34,8 @@
     {"m": "https://netbird.jet-net.net:", "ok": false, "why": "двоеточие без порта (находка Android)"},
     {"m": "https://.jet-net.net", "ok": false, "why": "пустой поддомен"},
     {"m": "https://netbird..jet-net.net", "ok": false, "why": "пустая метка"},
+    {"m": "https://netbird.jet-net.net..", "ok": false, "why": "две завершающие точки — срезается одна (находка Android)"},
+    {"m": "https://jet-net.net.", "ok": false, "why": "сам домен с завершающей точкой — нет (находка Android)"},
     {"m": " https://netbird.jet-net.net", "ok": false, "why": "пробел в начале (не обрезаем)"},
     {"m": "https://netbird.jet-net.net\\@evil.com", "ok": false, "why": "обратный слэш"},
     {"m": "https://нетберд.jet-net.net", "ok": false, "why": "не ASCII (только punycode)"},

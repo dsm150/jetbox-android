@@ -243,15 +243,18 @@ $A --es screen SETTINGS --ez update true        # настройки со стр
   его SHA-256 (16 байт hex), сам токен — нигде. `n` входит, потому что облачные абоненты делят один
   выход `e=cl-exit`. Та же identity с другим отпечатком ключа (Кабинет перевыпустил ссылку) — без
   вопроса, но с новым ключом. Общие векторы — `jetbox/src/test/resources/identity.json`, байт в
-  байт копия iOS `NetBirdTests/identity.json` (14 случаев, тест `IdentityVectorsTest`): не правим,
+  байт копия iOS `NetBirdTests/identity.json` (15 случаев, тест `IdentityVectorsTest`): не правим,
   а синхронизируем с iOS. Там же раздел `compare` — запись против ссылки, ответ `same`/`ask`
-  (10 случаев, тест `IdentityCompareVectorsTest`, iOS c04730e).
+  (10 случаев, тест `IdentityCompareVectorsTest`, iOS d47f61b).
+* **Завершающая точка хоста `m`** (решение 18.11.2026, iOS d47f61b): одна точка срезается до маски и
+  удостоверения — `https://netbird.jet-net.net.` ≡ `https://netbird.jet-net.net`, в payload и записи без точки,
+  без ложного «Другой JetBox» (15-й вектор `identity.json`, `ManagementMaskTest`); `..` и `jet-net.net.` — отказ.
 * **Маска адреса management** (решение владельца 18.11.2026, LINK-CONTRACT §2.3): `m` из ссылки — только
   `https://<поддомен>.jet-net.net[:порт]` (сам `jet-net.net` — нет; порт 1–65535), без логина, пути (кроме `/`),
   query, фрагмента и IP; хост — ASCII-имя (IDN — только punycode). Схема сравнивается только в ASCII
   (заглавная `HTTPS` — да, `httpſ` с U+017F — нет, как `url.Parse` эталона). Код — `JetBoxLink.isAllowedManagement`,
   эталон — `AllowedManagement` в JetBox_Desktop `core/jetboxlink/mask.go`; векторы
-  `jetbox/src/test/resources/mgmt-mask.json` — байт в байт копия `mgmt-mask.json` эталона (36 случаев,
+  `jetbox/src/test/resources/mgmt-mask.json` — байт в байт копия `mgmt-mask.json` эталона (38 случаев, JetBox_Desktop a5e5d91,
   тест `ManagementMaskTest`). Вне маски — исход `ForeignServer`: экран «Ссылка ведёт не на сервер JetBox» до
   любого вопроса, в сеть не идём, подключение и работающий туннель не трогаем. Пустой `m` — по-прежнему
   `DEFAULT_MANAGEMENT_URL`. Маска касается **только новых ссылок**: запись 1.0.3 и раньше с адресом вне

@@ -9,7 +9,7 @@ import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 
 /**
- * Раздел `compare` общих векторов `identity.json` (LINK-CONTRACT 1.3 §2.11, копия iOS c04730e): сохранённая
+ * Раздел `compare` общих векторов `identity.json` (LINK-CONTRACT 1.3 §2.11, копия iOS d47f61b): сохранённая
  * запись (m, e, n; null — поля нет) против ссылки → `same` (без вопроса) или `ask` («Другой JetBox»).
  * Отпечаток setup key решает раньше и сюда не входит.
  */

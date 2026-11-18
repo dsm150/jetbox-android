@@ -10,7 +10,7 @@ import java.net.URLEncoder
 /**
  * Маска адреса management (решение владельца 18.11.2026, LINK-CONTRACT §2.3).
  * Векторы `src/test/resources/mgmt-mask.json` — байт в байт копия
- * `JetBox_Desktop/core/jetboxlink/testdata/mgmt-mask.json` (коммит JetBox_Desktop 0d3bfe4), общие для
+ * `JetBox_Desktop/core/jetboxlink/testdata/mgmt-mask.json` (коммит JetBox_Desktop a5e5d91), общие для
  * службы, iOS и Android: файл не правим, а синхронизируем с эталоном.
  */
 class ManagementMaskTest {
@@ -37,7 +37,7 @@ class ManagementMaskTest {
 
     @Test fun vectorsFileIsComplete() {
         assertEquals(JetBoxConfig.MANAGEMENT_SUFFIX, vectors.getString("suffix"))
-        assertEquals(36, cases.size)
+        assertEquals(38, cases.size)
     }
 
     @Test fun allVectorsThroughMask() {
@@ -87,6 +87,31 @@ class ManagementMaskTest {
         assertEquals("https://netbird.jet-net.net", url("HTTPS://netbird.jet-net.net"))
     }
 
+    /**
+     * Одна завершающая точка хоста срезается ДО маски и удостоверения (решение 18.11.2026, iOS d47f61b):
+     * `netbird.jet-net.net.` — тот же сервер, в payload без точки, удостоверение то же. Две точки и сам
+     * `jet-net.net.` — отказ.
+     */
+    @Test fun trailingDotIsStrippedBeforeMaskAndIdentity() {
+        fun parse(m: String, tail: String = "&e=sv-acme-exit&n=Office") =
+            JetBoxLink.parse("jetbox://connect#k=$key&m=" + m.replace(":", "%3A").replace("/", "%2F") + tail)
+        val plain = (parse("https://netbird.jet-net.net") as JetBoxLink.Outcome.Payload).payload
+        for (m in listOf("https://netbird.jet-net.net.", "https://NETBIRD.jet-net.net./")) {
+            assertTrue(m, JetBoxLink.isAllowedManagement(m))
+            val dotted = (parse(m) as JetBoxLink.Outcome.Payload).payload
+            assertEquals(m, "https://netbird.jet-net.net", dotted.managementURL)
+            assertEquals(m, plain.boxIdentity, dotted.boxIdentity)
+            assertEquals(m, plain, dotted)
+        }
+        val port = (parse("https://netbird.jet-net.net.:443") as JetBoxLink.Outcome.Payload).payload
+        assertEquals("https://netbird.jet-net.net:443", port.managementURL)
+        assertEquals(plain.boxIdentity, port.boxIdentity)
+        for (m in listOf("https://netbird.jet-net.net..", "https://jet-net.net.")) {
+            assertFalse(m, JetBoxLink.isAllowedManagement(m))
+            assertEquals(m, JetBoxLink.Outcome.ForeignServer, parse(m))
+        }
+    }
+
     /** Места, где `java.net.URI` нестрог или где легко ошибиться, — сверх общих векторов. */
     @Test fun lenientUriCasesAreRejected() {
         for (m in listOf(
@@ -97,9 +122,9 @@ class ManagementMaskTest {
             "https://netbird.jet-net.net:+443", "https://netbird.jet-net.net:443:443", "https://netbird.jet-net.net:65536",
             "https://netbird.jet-net.net?", "https://netbird.jet-net.net/?", "https://netbird.jet-net.net//",
             "https://netbird.jet-net.net/%2F", "https:netbird.jet-net.net", "https:/netbird.jet-net.net",
-            "https://netbird.jet-net.net..", "https://netbird.jet-net.net\t", "https://netbird.jet-net.net ",
+            "https://netbird.jet-net.net\t", "https://netbird.jet-net.net ",
             "https://netbirK.jet-net.net", // знак Кельвина: lowercase дал бы ASCII «k»
-            "https://jet-net.net.", "https://-.jet-net.net.evil",
+            "https://-.jet-net.net.evil",
         )) assertFalse(m, JetBoxLink.isAllowedManagement(m))
         assertTrue(JetBoxLink.isAllowedManagement("https://netbird.jet-net.net:65535"))
         assertTrue(JetBoxLink.isAllowedManagement("https://netbird.jet-net.net:1"))

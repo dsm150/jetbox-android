@@ -259,7 +259,10 @@ object JetBoxLink {
      */
     fun isAllowedManagement(m: String): Boolean = managementAddress(m) != null
 
-    /** Хост (в нижнем регистре, как написан — с завершающей точкой, если была) и порт разрешённого адреса. */
+    /**
+     * Хост разрешённого адреса — в нижнем регистре, без одной завершающей точки (она срезается до маски
+     * и удостоверения: `netbird.jet-net.net.` — тот же сервер; решение 18.11.2026, iOS d47f61b) — и порт.
+     */
     private class ManagementAddress(val host: String, val port: Int?)
 
     /**
@@ -286,15 +289,14 @@ object JetBoxLink {
         if (rawHost.isEmpty() || !rawHost.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '.' }) {
             return null
         }
-        val host = rawHost.lowercase(Locale.ROOT)
-        val bare = host.removeSuffix(".")
+        val bare = rawHost.lowercase(Locale.ROOT).removeSuffix(".")
         val labels = bare.split('.')
         if (labels.any { it.isEmpty() }) return null
         // Числовая последняя метка — IP в любой записи (`1.2.3.4`, `2130706433`, `127.1`).
         if (labels.last().all { it in '0'..'9' }) return null
         val suffix = JetBoxConfig.MANAGEMENT_SUFFIX
         if (!bare.endsWith(suffix) || bare.length <= suffix.length) return null
-        return ManagementAddress(host, port)
+        return ManagementAddress(bare, port)
     }
 
     /** Нижний регистр только для ASCII-букв; прочие символы как есть. */
@@ -310,7 +312,7 @@ object JetBoxLink {
 
     /**
      * Пусто/нет параметра — дефолт приложения; иначе только адрес внутри маски [isAllowedManagement]
-     * (`null` — вне маски). Формат прежний: `https://хост[:порт]` без хвостового слэша.
+     * (`null` — вне маски). Формат прежний: `https://хост[:порт]` без хвостового слэша и без завершающей точки хоста.
      */
     private fun normalizedManagement(value: String?): String? {
         if (value.isNullOrEmpty()) return JetBoxConfig.DEFAULT_MANAGEMENT_URL
