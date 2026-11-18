@@ -3,7 +3,7 @@ package net.jetnet.jetbox.store
 import net.jetnet.jetbox.link.JetBoxLinkPayload
 import net.jetnet.jetbox.link.boxIdentityOf
 import net.jetnet.jetbox.link.hostOf
-import net.jetnet.jetbox.link.legacyBoxIdentityOf
+import net.jetnet.jetbox.link.sameConnection
 import org.json.JSONObject
 
 /**
@@ -20,14 +20,14 @@ data class JetBoxBox(
     /** Момент регистрации, миллисекунды Unix-эпохи. */
     val registeredAtMillis: Long,
     /**
-     * Отпечаток токена устройства из облачной ссылки (`t=`, `JetBoxLinkPayload.deviceTokenHash`):
-     * часть удостоверения. Сам токен не хранится.
+     * Отпечаток токена устройства из облачной ссылки (`t=`, `JetBoxLinkPayload.deviceTokenHash`).
+     * С ред. 1.3 в удостоверение не входит (меняется при перепривязке); хранится для совместимости.
      */
     val deviceTokenHash: String? = null,
     /**
      * Отпечаток setup key, по которому телефон зарегистрирован (`JetBoxIdentity.fingerprint`), сам
-     * ключ не хранится. `null` — запись сделана сборкой ≤ 1.0.2: экран «Другой JetBox» — по её
-     * формуле ([isSameConnection]), прежний ключ — только ссылке коробки (`JetBoxIdentity.plan`).
+     * ключ не хранится. `null` — запись сделана сборкой ≤ 1.0.2: прежний ключ — только ссылке коробки
+     * с тем же удостоверением (`JetBoxIdentity.plan`).
      */
     val setupKeyFingerprint: String? = null,
 ) {
@@ -42,24 +42,24 @@ data class JetBoxBox(
 
     /** Та же формула, что у `JetBoxLinkPayload.boxIdentity` (одна функция на двоих). */
     val identity: String
-        get() = boxIdentityOf(managementURL, exitNodeName, deviceTokenHash, boxName)
+        get() = boxIdentityOf(managementURL, exitNodeName, boxName)
 
-    /** Запись сборки ≤ 1.0.2: нет отпечатка ключа (и не было ни `t`, ни правила про имя). */
+    /** Запись сборки ≤ 1.0.2: нет отпечатка ключа. */
     val isLegacy: Boolean
         get() = setupKeyFingerprint == null
 
     /**
-     * Ссылка ведёт на это же подключение — экрана «Другой JetBox» не будет. Запись ≤ 1.0.2 —
-     * по её формуле `хост|(e ?: "")` (как iOS): своя облачная ссылка с `t` — тот же JetBox.
+     * Ссылка ведёт на это же подключение — экрана «Другой JetBox» не будет. Одно правило для всех
+     * записей, в том числе ≤ 1.0.2 ([sameConnection], LINK-CONTRACT 1.3 §2.11): без имени у записи
+     * или у ссылки — по `хост|e`, кроме общего выхода облака `cl-…`.
      */
     fun isSameConnection(payload: JetBoxLinkPayload): Boolean =
-        if (isLegacy) legacyBoxIdentityOf(managementURL, exitNodeName) == payload.legacyBoxIdentity
-        else identity == payload.boxIdentity
+        sameConnection(managementURL, exitNodeName, boxName, payload.managementURL, payload.exitNodeName, payload.boxName)
 
     /**
-     * Имя дома из свежей ссылки того же JetBox. `null` — менять нечего
-     * (другой JetBox, в ссылке нет имени или оно то же). Для ссылок без `e` и `t` имя входит в
-     * удостоверение — новое имя там уже «Другой JetBox», сюда не доходит.
+     * Имя дома из свежей ссылки того же JetBox. `null` — менять нечего. С ред. 1.3 (§2.11) имя входит в
+     * удостоверение: другое имя — уже «Другой JetBox», сюда не доходит. Фактически имя только
+     * появляется — у записи его не было (ссылка была без `n`), как iOS `named(by:)`.
      */
     fun renamed(by: JetBoxLinkPayload): JetBoxBox? {
         if (!isSameConnection(by)) return null

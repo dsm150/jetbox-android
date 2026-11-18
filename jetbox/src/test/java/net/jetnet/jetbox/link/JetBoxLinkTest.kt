@@ -282,7 +282,7 @@ class JetBoxLinkTest {
     @Test fun identityIsHostAndExitKeepsPortInUrl() {
         val p = payload("jetbox://connect#k=$key&m=https%3A%2F%2FNetBird.Jet-Net.net%3A443%2F&e=Ex")
         assertEquals("https://netbird.jet-net.net:443", p.managementURL)
-        assertEquals("netbird.jet-net.net|Ex", p.boxIdentity)
+        assertEquals("netbird.jet-net.net|Ex|", p.boxIdentity)
     }
 
     /** Путь в адресе management маска запрещает (было: путь сохранялся без хвостового слэша). */
@@ -304,7 +304,7 @@ class JetBoxLinkTest {
 
     // endregion
 
-    // region токен устройства t (LINK-CONTRACT 1.2)
+    // region токен устройства t и удостоверение хост|e|n / хост|n:<n> (LINK-CONTRACT 1.3 §2.11)
 
     @Test fun deviceTokenIsParsedAndMasked() {
         val p = payload("https://box.jet-net.net/connect#k=$key&m=https%3A%2F%2Fnetbird.jet-net.net&n=Tariff&p=android&t=device-token-12345")
@@ -315,36 +315,42 @@ class JetBoxLinkTest {
         assertNull(payload("jetbox://connect#k=$key&t=").deviceToken)
     }
 
-    @Test fun identityCarriesTokenFingerprintNotToken() {
+    /** Ред. 1.3 §2.11: `t` в удостоверение не входит (меняется при перепривязке), хранится только отпечаток. */
+    @Test fun identityIgnoresTokenKeepsOnlyFingerprint() {
         val p = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&t=device-token-12345")
         assertEquals(secretFingerprint("device-token-12345"), p.deviceTokenHash)
-        assertEquals("netbird.jet-net.net|t:${p.deviceTokenHash}", p.boxIdentity)
+        assertEquals("netbird.jet-net.net|", p.boxIdentity)
         assertFalse(p.boxIdentity.contains("device-token"))
-        assertEquals("netbird.jet-net.net|", p.legacyBoxIdentity)
+        assertFalse(p.boxIdentity.contains(p.deviceTokenHash!!))
     }
 
-    @Test fun identityWithExitIgnoresTokenAndName() {
+    /** Имя входит в удостоверение и при `e`: облачные абоненты делят `e=cl-exit`. */
+    @Test fun identityWithExitIncludesNameIgnoresToken() {
         val a = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&t=t1&n=A")
-        val b = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&t=t2&n=B")
-        assertEquals("mgmt.jet-net.net|one", a.boxIdentity)
-        assertEquals(a.boxIdentity, b.boxIdentity)
+        val otherToken = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&t=t2&n=A")
+        val otherName = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&t=t1&n=B")
+        assertEquals("mgmt.jet-net.net|one|A", a.boxIdentity)
+        assertEquals("другой t — то же подключение", a.boxIdentity, otherToken.boxIdentity)
+        assertNotEquals("другое n при том же e — другое подключение", a.boxIdentity, otherName.boxIdentity)
     }
 
-    @Test fun identityWithOnlyTokenFollowsToken() {
-        val a = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&t=t1&n=A")
-        val sameT = payload("jetbox://connect#k=$key&m=https://NetBird.jet-net.net&t=t1&n=B")
-        val otherT = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&t=t2&n=A")
-        assertEquals(a.boxIdentity, sameT.boxIdentity)
-        assertNotEquals(a.boxIdentity, otherT.boxIdentity)
+    @Test fun cloudSubscribersSharingExitDifferByName() {
+        val ivanov = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=cl-exit&n=Ivanov&t=t1")
+        val petrov = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=cl-exit&n=Petrov&t=t1")
+        val ivanovRebound = payload("jetbox://connect#k=$key&m=https://NetBird.jet-net.net&e=cl-exit&n=Ivanov&t=t2")
+        assertNotEquals(ivanov.boxIdentity, petrov.boxIdentity)
+        assertEquals("перепривязка (новый t) — то же подключение", ivanov.boxIdentity, ivanovRebound.boxIdentity)
     }
 
-    @Test fun identityWithoutExitAndTokenIsHostAndName() {
+    @Test fun identityWithoutExitIsHostAndName() {
         val a = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=A")
+        assertEquals("netbird.jet-net.net|n:A", a.boxIdentity)
         assertEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net/&n=A").boxIdentity)
         assertNotEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=B").boxIdentity)
         assertNotEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://other.jet-net.net&n=A").boxIdentity)
         assertNotEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net").boxIdentity)
         assertNotEquals("токен — не имя", a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&t=A").boxIdentity)
+        assertNotEquals("выход — не имя", a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=A").boxIdentity)
     }
 
     // endregion

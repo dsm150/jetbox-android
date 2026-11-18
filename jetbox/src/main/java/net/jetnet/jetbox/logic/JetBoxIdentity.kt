@@ -38,10 +38,8 @@ object JetBoxIdentity {
         val known = current.setupKeyFingerprint
         if (known != null) return if (known == fingerprint(payload.setupKey)) Plan.REUSE else Plan.FRESH
         // Запись сделана сборкой ≤ 1.0.2, отпечатка ключа в ней нет. Прежний ключ — только для ссылки
-        // коробки (`e` есть) с тем же `хост|e`. Облачная ссылка (без `e`) — новый ключ: `t` старая
-        // запись не хранила, а по `хост|e` любые две облачные ссылки одного management совпадают
-        // (iOS сравнивает полную identity, у нас для старых записей её нет). Экран «Другой JetBox»
-        // (`isSameConnection`) при этом остаётся мягким — по формуле 1.0.2.
+        // с выходом `e`, ведущей к тому же подключению (`isSameConnection`, LINK-CONTRACT 1.3 §2.11:
+        // `хост|e|n`, без имени — по `хост|e`, кроме общего `cl-…`); ссылка без `e` — новый ключ.
         return if (!payload.exitNodeName.isNullOrEmpty() && current.isSameConnection(payload)) Plan.REUSE else Plan.FRESH
     }
 

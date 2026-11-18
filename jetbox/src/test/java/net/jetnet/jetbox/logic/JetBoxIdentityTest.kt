@@ -14,11 +14,23 @@ class JetBoxIdentityTest {
     private val keyA = "11111111-2222-4333-8444-555555555555"
     private val keyB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
-    private fun link(k: String = keyA, m: String = "https://nb.jet-net.net", e: String? = "home"): JetBoxLinkPayload =
-        (JetBoxLink.parse("jetbox://connect#k=$k&m=$m" + (e?.let { "&e=$it" } ?: "")) as JetBoxLink.Outcome.Payload).payload
+    private fun link(
+        k: String = keyA,
+        m: String = "https://nb.jet-net.net",
+        e: String? = "home",
+        n: String? = null,
+        t: String? = null,
+    ): JetBoxLinkPayload =
+        (JetBoxLink.parse(
+            "jetbox://connect#k=$k&m=$m" + (e?.let { "&e=$it" } ?: "") + (n?.let { "&n=$it" } ?: "") + (t?.let { "&t=$it" } ?: "")
+        ) as JetBoxLink.Outcome.Payload).payload
 
-    private fun box(m: String = "https://nb.jet-net.net", e: String? = "home", fp: String? = JetBoxIdentity.fingerprint(keyA)) =
-        JetBoxBox(m, e, e, null, 1L, setupKeyFingerprint = fp)
+    private fun box(
+        m: String = "https://nb.jet-net.net",
+        e: String? = "home",
+        fp: String? = JetBoxIdentity.fingerprint(keyA),
+        n: String? = null,
+    ) = JetBoxBox(m, e, e, n, 1L, setupKeyFingerprint = fp)
 
     @Test fun fingerprintIsLikeIos() {
         // SHA-256 ключа в нижнем регистре, первые 16 байт hex — вектор посчитан независимо (python hashlib).
@@ -56,9 +68,9 @@ class JetBoxIdentityTest {
     }
 
     /**
-     * Запись ≤ 1.0.2 без `e` + облачная ссылка (без `e`): `t` в старой записи не хранился, и по
-     * `хост|e` любые две облачные ссылки одного management — «тот же» JetBox. Ключ — новый, иначе
-     * чужая облачная ссылка осталась бы прежним пиром (баг 13.11.2026).
+     * Запись ≤ 1.0.2 без `e` + облачная ссылка без `e`: прежний ключ — только ссылке с `e`
+     * (LINK-CONTRACT 1.3 §2.11), иначе чужая облачная ссылка осталась бы прежним пиром (баг 13.11.2026).
+     * Экран «Другой JetBox» при том же `хост|n:<n>` не показывается, но ключ всё равно новый.
      */
     @Test fun legacyRecordAndCloudLinkIsFresh() {
         val legacy = JetBoxBox("https://netbird.jet-net.net", null, null, "Тариф", 1L)
@@ -70,11 +82,34 @@ class JetBoxIdentityTest {
         assertEquals(Plan.FRESH, JetBoxIdentity.plan(legacy, other, configExists = true))
     }
 
-    /** Запись ≤ 1.0.2 коробки + ссылка той же коробки (тот же `e`) — прежний ключ, даже с другим setup key. */
+    /** Запись ≤ 1.0.2 коробки + ссылка той же коробки (тот же хост, `e`, `n`) — прежний ключ, даже с другим setup key. */
     @Test fun legacyRecordAndSameBoxLinkReuses() {
         assertEquals(Plan.REUSE, JetBoxIdentity.plan(box(fp = null), link(k = keyB), configExists = true))
         assertEquals(Plan.REUSE, JetBoxIdentity.plan(box(fp = null), link(), configExists = true))
+        assertEquals(Plan.REUSE, JetBoxIdentity.plan(box(fp = null, n = "Dom"), link(k = keyB, n = "Dom", t = "x"), configExists = true))
         assertEquals(Plan.FRESH, JetBoxIdentity.plan(box(fp = null, e = null), link(e = null), configExists = true))
+    }
+
+    /** Запись ≤ 1.0.2 той же коробки, но в ссылке другое имя: ред. 1.3 — «Другой JetBox» и новый ключ. */
+    @Test fun legacyRecordAndRenamedBoxLinkIsFresh() {
+        assertEquals(Plan.FRESH, JetBoxIdentity.plan(box(fp = null, n = "Dom"), link(n = "Dacha"), configExists = true))
+    }
+
+    /** Запись ≤ 1.0.2 коробки без имени (или ссылка без n) — сравнение по хост|e: прежний ключ. */
+    @Test fun legacyRecordWithoutNameAndSameBoxLinkWithNameReuses() {
+        assertEquals(Plan.REUSE, JetBoxIdentity.plan(box(fp = null, n = null), link(k = keyB, n = "Dom"), configExists = true))
+        assertEquals(Plan.REUSE, JetBoxIdentity.plan(box(fp = null, n = "Dom"), link(k = keyB), configExists = true))
+    }
+
+    /** Облачные абоненты делят `e=cl-exit`: запись ≤ 1.0.2 и ссылка другого абонента — новый ключ, своя — прежний. */
+    @Test fun legacyCloudRecordSharedExitFollowsName() {
+        val legacy = box(m = "https://netbird.jet-net.net", e = "cl-exit", fp = null, n = "Ivanov")
+        assertEquals(Plan.FRESH, JetBoxIdentity.plan(legacy, link(k = keyB, m = "https://netbird.jet-net.net", e = "cl-exit", n = "Petrov", t = "t2"), configExists = true))
+        assertEquals(Plan.REUSE, JetBoxIdentity.plan(legacy, link(k = keyB, m = "https://netbird.jet-net.net", e = "cl-exit", n = "Ivanov", t = "t9"), configExists = true))
+        // Общий выход без имени с одной из сторон — абонента не различить: новый ключ.
+        val unnamed = box(m = "https://netbird.jet-net.net", e = "cl-exit", fp = null, n = null)
+        assertEquals(Plan.FRESH, JetBoxIdentity.plan(unnamed, link(m = "https://netbird.jet-net.net", e = "cl-exit", n = "Ivanov"), configExists = true))
+        assertEquals(Plan.FRESH, JetBoxIdentity.plan(legacy, link(m = "https://netbird.jet-net.net", e = "cl-exit"), configExists = true))
     }
 
     @Test fun tokenFingerprintKeepsCase() {

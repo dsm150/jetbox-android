@@ -150,8 +150,8 @@ class JetBoxOnboarding(
                 if (box != null && !box.isSameConnection(payload)) {
                     _step.value = Step.ConfirmSwitch(payload, box.displayName)
                 } else {
-                    // Тот же JetBox: имя из ссылки свежее — запоминаем сразу, даже если клиент
-                    // нажмёт «Отмена». Дальше — тот же путь, что и в первый раз (как iOS).
+                    // Тот же JetBox (LINK-CONTRACT 1.3 §2.11): если у записи не было имени, а в ссылке
+                    // оно есть — запоминаем сразу. Дальше — тот же путь, что и в первый раз (как iOS).
                     box?.renamed(payload)?.let { store.currentBox = it }
                     _step.value = Step.Ready(payload)
                 }
