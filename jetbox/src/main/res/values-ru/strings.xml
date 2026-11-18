@@ -28,6 +28,9 @@
     <string name="jb_exit_picker_empty">Ни одного выхода не найдено. Возможно, объект выключен — свяжитесь с поддержкой.</string>
     <string name="jb_err_broken_title">Ссылка повреждена</string>
     <string name="jb_err_broken_body">Эта ссылка не подходит для подключения. Запросите новую ссылку у поддержки JetBox.</string>
+    <!-- Адрес management в ссылке вне маски *.jet-net.net (решение владельца 18.11.2026). -->
+    <string name="jb_err_foreign_title">Ссылка ведёт не на сервер JetBox</string>
+    <string name="jb_err_foreign_body">Подключение не изменено. Возьмите ссылку подключения в Личном кабинете JetBox.</string>
     <string name="jb_err_offline_title">Нет интернета</string>
     <string name="jb_err_offline_body">Подключитесь к Wi-Fi или мобильной сети и попробуйте снова.</string>
     <string name="jb_err_unreachable_title">JetBox не отвечает</string>

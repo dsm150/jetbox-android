@@ -116,8 +116,15 @@ object JetBoxLink {
         /** Ссылка наша и разобрана. */
         data class Payload(val payload: JetBoxLinkPayload) : Outcome()
 
-        /** Ссылка наша, но испорчена (кривой ключ, кривой management). */
+        /** Ссылка наша, но испорчена (кривой ключ). */
         data object Broken : Outcome()
+
+        /**
+         * Ссылка наша, ключ в порядке, но адрес management вне маски [isAllowedManagement]
+         * (решение владельца 18.11.2026, LINK-CONTRACT §2.3): «Ссылка ведёт не на сервер JetBox».
+         * В сеть не идём, текущее подключение не трогаем, вопрос «Другой JetBox» не задаём.
+         */
+        data object ForeignServer : Outcome()
 
         /** Не наша ссылка — отдаём дальше по цепочке обработчиков. */
         data object NotOurs : Outcome()
@@ -137,7 +144,9 @@ object JetBoxLink {
         // Без ключа это не ссылка подключения: не пугаем клиента ошибкой.
         val key = params["k"]?.takeIf { it.isNotEmpty() } ?: return Outcome.NotOurs
         if (!isValidSetupKey(key)) return Outcome.Broken
-        val management = normalizedManagement(params["m"]) ?: return Outcome.Broken
+        // Эталон (JetBox_Desktop core/jetboxlink, AllowedManagement) «битый» m от «чужого» не отличает:
+        // всё, что вне маски, — чужой сервер.
+        val management = normalizedManagement(params["m"]) ?: return Outcome.ForeignServer
 
         return Outcome.Payload(
             JetBoxLinkPayload(
@@ -232,16 +241,68 @@ object JetBoxLink {
     /** Формат NetBird: ровно 36 символов, строгий UUID (`UUID.fromString` и при длине 36 нестрог, напр. принимает «+»). */
     fun isValidSetupKey(key: String): Boolean = key.length == 36 && UUID_REGEX.matches(key)
 
-    /** Только https, обязателен хост, хвостовой слэш срезаем; пусто/нет параметра — дефолт приложения. */
+    /**
+     * Маска адреса management (решение владельца 18.11.2026; одно правило на все платформы —
+     * LINK-CONTRACT §2.3, эталон `AllowedManagement` в JetBox_Desktop `core/jetboxlink/mask.go`,
+     * общие векторы `mgmt-mask.json`). [m] — значение параметра после percent-decoding. Разрешено, только если:
+     * схема https; без логина, без пути (кроме «/»), без query и фрагмента; хост — ASCII-имя
+     * (IDN — только punycode), не IP; в нижнем регистре без одной завершающей точки, без пустых меток
+     * оканчивается на [JetBoxConfig.MANAGEMENT_SUFFIX] (сам `jet-net.net` — нет); порт, если есть, — 1–65535.
+     */
+    fun isAllowedManagement(m: String): Boolean = managementAddress(m) != null
+
+    /** Хост (в нижнем регистре, как написан — с завершающей точкой, если была) и порт разрешённого адреса. */
+    private class ManagementAddress(val host: String, val port: Int?)
+
+    /**
+     * Разбор authority вручную: `java.net.URI` здесь нестрог (хост с «_» уходит в authority при
+     * `host == null`, IPv6 в `[]`, десятичные и сокращённые IPv4 вроде `2130706433`, `127.1`).
+     */
+    private fun managementAddress(m: String): ManagementAddress? {
+        val prefix = "https://"
+        if (!m.regionMatches(0, prefix, 0, prefix.length, ignoreCase = true)) return null
+        val rest = m.substring(prefix.length)
+        if (rest.any { it == '?' || it == '#' }) return null
+        val slash = rest.indexOf('/')
+        val authority = if (slash < 0) rest else rest.substring(0, slash)
+        val path = if (slash < 0) "" else rest.substring(slash)
+        if (path.isNotEmpty() && path != "/") return null
+        if ('@' in authority) return null
+
+        val colon = authority.indexOf(':')
+        val rawHost = if (colon < 0) authority else authority.substring(0, colon)
+        val port = if (colon < 0) null else parsePort(authority.substring(colon + 1)) ?: return null
+
+        // Только ASCII-буквы, цифры, «-» и «.»: заодно отсекает IPv6 (`[`, `:`), логин, `%`, `\`, `_`, Unicode.
+        if (rawHost.isEmpty() || !rawHost.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '.' }) {
+            return null
+        }
+        val host = rawHost.lowercase(Locale.ROOT)
+        val bare = host.removeSuffix(".")
+        val labels = bare.split('.')
+        if (labels.any { it.isEmpty() }) return null
+        // Числовая последняя метка — IP в любой записи (`1.2.3.4`, `2130706433`, `127.1`).
+        if (labels.last().all { it in '0'..'9' }) return null
+        val suffix = JetBoxConfig.MANAGEMENT_SUFFIX
+        if (!bare.endsWith(suffix) || bare.length <= suffix.length) return null
+        return ManagementAddress(host, port)
+    }
+
+    /** Порт — только ASCII-цифры, 1–65535 (ведущие нули допустимы, как в эталоне); пустой — нет. */
+    private fun parsePort(raw: String): Int? {
+        if (raw.isEmpty() || !raw.all { it in '0'..'9' }) return null
+        val digits = raw.trimStart('0')
+        if (digits.isEmpty() || digits.length > 5) return null
+        return digits.toInt().takeIf { it in 1..65535 }
+    }
+
+    /**
+     * Пусто/нет параметра — дефолт приложения; иначе только адрес внутри маски [isAllowedManagement]
+     * (`null` — вне маски). Формат прежний: `https://хост[:порт]` без хвостового слэша.
+     */
     private fun normalizedManagement(value: String?): String? {
         if (value.isNullOrEmpty()) return JetBoxConfig.DEFAULT_MANAGEMENT_URL
-        val uri = runCatching { URI(value) }.getOrNull() ?: return null
-        if (uri.scheme?.lowercase(Locale.ROOT) != "https") return null
-        val host = uri.host?.takeIf { it.isNotEmpty() } ?: return null
-        val sb = StringBuilder("https://").append(host.lowercase(Locale.ROOT))
-        if (uri.port != -1) sb.append(':').append(uri.port)
-        val path = uri.rawPath ?: ""
-        if (path.isNotEmpty() && path != "/") sb.append(path.removeSuffix("/"))
-        return sb.toString()
+        val address = managementAddress(value) ?: return null
+        return "https://" + address.host + (address.port?.let { ":$it" } ?: "")
     }
 }

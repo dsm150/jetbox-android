@@ -21,7 +21,7 @@ import net.jetnet.jetbox.ui.theme.JetBoxTheme
  * (настоящие экран и HomeViewModel на демо-движке, лист — нажатием на панель; `--ez update true` — с капсулой
  * «Доступна новая версия»);
  * `--es flow READY|SWITCH|REGISTERING|CONNECTING|CONSENT|SELECTING_EXIT|CHOOSE_EXIT|PROTECTED|PROTECTED_NO_EXIT|
- * FAILED_KEY|FAILED_UNREACHABLE|FAILED_BROKEN|FAILED_VPN` — экран по ссылке (`--ez details true` — подробности
+ * FAILED_KEY|FAILED_UNREACHABLE|FAILED_BROKEN|FAILED_FOREIGN|FAILED_VPN` — экран по ссылке (`--ez details true` — подробности
  * отказа раскрыты); `--es screen SETTINGS|SETTINGS_ADVANCED|SETTINGS_NOBOX|ABOUT` — настройки и «О программе»
  * (`--ez update true` — со строкой «Обновить до …»).
  */

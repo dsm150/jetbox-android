@@ -66,8 +66,8 @@ class JetBoxLinkTest {
     // region Своя схема
 
     @Test fun customSchemeMatchesUniversalLink() {
-        val a = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=node")
-        val b = payload("https://box.jet-net.net/connect#k=$key&m=https://mgmt.example.net&e=node")
+        val a = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=node")
+        val b = payload("https://box.jet-net.net/connect#k=$key&m=https://mgmt.jet-net.net&e=node")
         assertEquals(a, b)
     }
 
@@ -87,19 +87,19 @@ class JetBoxLinkTest {
 
     @Test fun managementNormalisation() {
         assertEquals(
-            "https://mgmt.example.net",
-            payload("jetbox://connect#k=$key&m=https://Mgmt.Example.NET/").managementURL,
+            "https://mgmt.jet-net.net",
+            payload("jetbox://connect#k=$key&m=https://Mgmt.Jet-Net.NET/").managementURL,
         )
         assertEquals(
-            "https://mgmt.example.net:33073",
-            payload("jetbox://connect#k=$key&m=https://mgmt.example.net:33073").managementURL,
+            "https://mgmt.jet-net.net:33073",
+            payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net:33073").managementURL,
         )
     }
 
     @Test fun parameterOrderAndUnknownParametersDoNotMatter() {
-        val p = payload("jetbox://connect#e=node&z=whatever&m=https://mgmt.example.net&k=$key")
+        val p = payload("jetbox://connect#e=node&z=whatever&m=https://mgmt.jet-net.net&k=$key")
         assertEquals("node", p.exitNodeName)
-        assertEquals("https://mgmt.example.net", p.managementURL)
+        assertEquals("https://mgmt.jet-net.net", p.managementURL)
     }
 
     /** Кабинет добавляет `p=` («что подключаем»); по контракту §2.1 неизвестные параметры игнорируются. */
@@ -138,7 +138,7 @@ class JetBoxLinkTest {
     }
 
     @Test fun missingKeyIsNotOurs() {
-        assertEquals(JetBoxLink.Outcome.NotOurs, parse("https://box.jet-net.net/connect#m=https://mgmt.example.net"))
+        assertEquals(JetBoxLink.Outcome.NotOurs, parse("https://box.jet-net.net/connect#m=https://mgmt.jet-net.net"))
         assertEquals(JetBoxLink.Outcome.NotOurs, parse("jetbox://connect#k="))
     }
 
@@ -150,10 +150,16 @@ class JetBoxLinkTest {
         assertEquals(JetBoxLink.Outcome.Broken, parse("jetbox://connect#k=" + "Z".repeat(36)))
     }
 
-    @Test fun nonHttpsManagementIsBroken() {
-        assertEquals(JetBoxLink.Outcome.Broken, parse("jetbox://connect#k=$key&m=http://mgmt.example.net"))
-        assertEquals(JetBoxLink.Outcome.Broken, parse("jetbox://connect#k=$key&m=mgmt.example.net"))
-        assertEquals(JetBoxLink.Outcome.Broken, parse("jetbox://connect#k=$key&m=javascript:alert(1)"))
+    /** Маска владельца 18.11.2026: всё, что не https на поддомене jet-net.net, — «не на сервер JetBox» (как эталон, без «битого» m). */
+    @Test fun nonHttpsManagementIsForeignServer() {
+        assertEquals(JetBoxLink.Outcome.ForeignServer, parse("jetbox://connect#k=$key&m=http://mgmt.jet-net.net"))
+        assertEquals(JetBoxLink.Outcome.ForeignServer, parse("jetbox://connect#k=$key&m=mgmt.jet-net.net"))
+        assertEquals(JetBoxLink.Outcome.ForeignServer, parse("jetbox://connect#k=$key&m=javascript:alert(1)"))
+    }
+
+    /** Битый ключ проверяется раньше management: чужой сервер с кривым ключом — всё ещё «Ссылка повреждена». */
+    @Test fun brokenKeyWinsOverForeignServer() {
+        assertEquals(JetBoxLink.Outcome.Broken, parse("jetbox://connect#k=not-a-uuid&m=https://evil.com"))
     }
 
     @Test fun garbageFragmentDoesNotCrash() {
@@ -175,13 +181,13 @@ class JetBoxLinkTest {
     @Test fun displayNameFallsBackFromNameToExitToHost() {
         assertEquals("Дом", payload("jetbox://connect#k=$key&n=Дом&e=node").displayName)
         assertEquals("node", payload("jetbox://connect#k=$key&e=node").displayName)
-        assertEquals("mgmt.example.net", payload("jetbox://connect#k=$key&m=https://mgmt.example.net").displayName)
+        assertEquals("mgmt.jet-net.net", payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net").displayName)
     }
 
     @Test fun boxIdentityDistinguishesBoxes() {
-        val a = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=one")
-        val b = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=two")
-        val sameAsA = payload("jetbox://connect#k=$key&m=https://MGMT.example.net/&e=one")
+        val a = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one")
+        val b = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=two")
+        val sameAsA = payload("jetbox://connect#k=$key&m=https://MGMT.jet-net.net/&e=one")
         assertNotEquals(a.boxIdentity, b.boxIdentity)
         assertEquals(a.boxIdentity, sameAsA.boxIdentity)
     }
@@ -260,7 +266,7 @@ class JetBoxLinkTest {
     }
 
     @Test fun keyNeverLeaksThroughToString() {
-        val link = "jetbox://connect#k=$key&m=https://mgmt.example.net&e=node"
+        val link = "jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=node"
         assertFalse(payload(link).toString().contains(key))
         assertFalse(JetBoxLink.parse(link).toString().contains(key))
     }
@@ -279,10 +285,11 @@ class JetBoxLinkTest {
         assertEquals("netbird.jet-net.net|Ex", p.boxIdentity)
     }
 
-    @Test fun managementKeepsSubpathWithoutTrailingSlash() {
+    /** Путь в адресе management маска запрещает (было: путь сохранялся без хвостового слэша). */
+    @Test fun managementWithSubpathIsForeignServer() {
         assertEquals(
-            "https://mgmt.example.net/api",
-            payload("jetbox://connect#k=$key&m=https://mgmt.example.net/api/").managementURL,
+            JetBoxLink.Outcome.ForeignServer,
+            parse("jetbox://connect#k=$key&m=https://mgmt.jet-net.net/api/"),
         )
     }
 
@@ -317,9 +324,9 @@ class JetBoxLinkTest {
     }
 
     @Test fun identityWithExitIgnoresTokenAndName() {
-        val a = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=one&t=t1&n=A")
-        val b = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=one&t=t2&n=B")
-        assertEquals("mgmt.example.net|one", a.boxIdentity)
+        val a = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&t=t1&n=A")
+        val b = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&t=t2&n=B")
+        assertEquals("mgmt.jet-net.net|one", a.boxIdentity)
         assertEquals(a.boxIdentity, b.boxIdentity)
     }
 
@@ -335,7 +342,7 @@ class JetBoxLinkTest {
         val a = payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=A")
         assertEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net/&n=A").boxIdentity)
         assertNotEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&n=B").boxIdentity)
-        assertNotEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://other.example.net&n=A").boxIdentity)
+        assertNotEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://other.jet-net.net&n=A").boxIdentity)
         assertNotEquals(a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net").boxIdentity)
         assertNotEquals("токен — не имя", a.boxIdentity, payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&t=A").boxIdentity)
     }

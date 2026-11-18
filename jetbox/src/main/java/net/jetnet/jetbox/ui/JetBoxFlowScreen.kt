@@ -410,6 +410,7 @@ private fun FlowFooter(step: Step, actions: JetBoxFlowActions) {
 private val JetBoxFailure.titleRes: Int
     get() = when (this) {
         JetBoxFailure.BrokenLink -> R.string.jb_err_broken_title
+        JetBoxFailure.ForeignServer -> R.string.jb_err_foreign_title
         JetBoxFailure.Offline -> R.string.jb_err_offline_title
         is JetBoxFailure.ManagementUnreachable -> R.string.jb_err_unreachable_title
         is JetBoxFailure.KeyRejected -> R.string.jb_err_key_title
@@ -422,6 +423,7 @@ private val JetBoxFailure.titleRes: Int
 private val JetBoxFailure.messageRes: Int
     get() = when (this) {
         JetBoxFailure.BrokenLink -> R.string.jb_err_broken_body
+        JetBoxFailure.ForeignServer -> R.string.jb_err_foreign_body
         JetBoxFailure.Offline -> R.string.jb_err_offline_body
         is JetBoxFailure.ManagementUnreachable -> R.string.jb_err_unreachable_body
         is JetBoxFailure.KeyRejected -> R.string.jb_err_key_body
@@ -586,6 +588,7 @@ internal val PreviewFlowSteps: Map<String, Step> = linkedMapOf(
         JetBoxFailure.ManagementUnreachable("rpc error: code = Unavailable desc = connection error: dial tcp: i/o timeout"),
     ),
     "FAILED_BROKEN" to Step.Failed(JetBoxFailure.BrokenLink),
+    "FAILED_FOREIGN" to Step.Failed(JetBoxFailure.ForeignServer),
     "FAILED_VPN" to Step.Failed(JetBoxFailure.VpnPermissionDenied),
 )
 

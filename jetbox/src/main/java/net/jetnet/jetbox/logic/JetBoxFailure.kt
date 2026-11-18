@@ -7,6 +7,9 @@ package net.jetnet.jetbox.logic
  */
 sealed class JetBoxFailure {
     data object BrokenLink : JetBoxFailure() { override val details: String? = null }
+
+    /** Адрес management в ссылке вне маски `*.jet-net.net` (решение владельца 18.11.2026). */
+    data object ForeignServer : JetBoxFailure() { override val details: String? = null }
     data object Offline : JetBoxFailure() { override val details: String? = null }
     data class ManagementUnreachable(override val details: String?) : JetBoxFailure()
     data class KeyRejected(override val details: String?) : JetBoxFailure()
@@ -19,8 +22,8 @@ sealed class JetBoxFailure {
     /** Технические подробности для поддержки (у отказов без текста ядра — null). */
     abstract val details: String?
 
-    /** Повтор имеет смысл не всегда: испорченную ссылку повторять нечем. */
-    val canRetry: Boolean get() = this !is BrokenLink
+    /** Повтор имеет смысл не всегда: испорченную или чужую ссылку повторять нечем. */
+    val canRetry: Boolean get() = this !is BrokenLink && this !is ForeignServer
 
     companion object {
         private val CERT_MARKERS = listOf("x509", "certificate")

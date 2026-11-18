@@ -14,6 +14,9 @@ object JetBoxConfig {
     /** Management по умолчанию — страховка для старых ссылок (Кабинет всегда кладёт `m=` явно). */
     const val DEFAULT_MANAGEMENT_URL = "https://netbird.jet-net.net"
 
+    /** Маска адреса management из ссылки: только поддомены этого домена (`JetBoxLink.isAllowedManagement`). */
+    const val MANAGEMENT_SUFFIX = ".jet-net.net"
+
     const val PRIVACY_POLICY_URL = "https://jet-net.net/privacy"
     const val SITE_URL = "https://jet-net.net"
 

@@ -25,7 +25,7 @@ class JetBoxStoreTest {
     }
 
     private fun box(
-        url: String = "https://mgmt.example.net",
+        url: String = "https://mgmt.jet-net.net",
         exit: String? = "one",
         selected: String? = "one",
         name: String? = "Дом",
@@ -83,12 +83,12 @@ class JetBoxStoreTest {
     @Test fun jsonRoundTripWithCyrillicAndNulls() {
         val full = box(name = "Дом на Западной", at = 1789000000000L)
         assertEquals(full, JetBoxBox.fromJson(full.toJson()))
-        val empty = JetBoxBox("https://mgmt.example.net", null, null, null, 0L)
+        val empty = JetBoxBox("https://mgmt.jet-net.net", null, null, null, 0L)
         assertEquals(empty, JetBoxBox.fromJson(empty.toJson()))
     }
 
     @Test fun jsonHasNoSetupKey() {
-        val p = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=one&n=Home")
+        val p = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&n=Home")
         val b = JetBoxBox(p.managementURL, p.exitNodeName, p.exitNodeName, p.boxName, 1L)
         val json = b.toJson()
         assertFalse("ключ не должен попасть на диск", json.contains(key))
@@ -104,8 +104,8 @@ class JetBoxStoreTest {
         assertEquals("Дом", box(name = "Дом").displayName)
         assertEquals("one", box(name = null).displayName)
         assertEquals("one", box(name = "").displayName)
-        assertEquals("mgmt.example.net", box(name = null, exit = null).displayName)
-        assertEquals("mgmt.example.net", box(name = "", exit = "").displayName)
+        assertEquals("mgmt.jet-net.net", box(name = null, exit = null).displayName)
+        assertEquals("mgmt.jet-net.net", box(name = "", exit = "").displayName)
     }
 
     @Test fun effectiveExitNodePrefersSelected() {
@@ -115,9 +115,9 @@ class JetBoxStoreTest {
     }
 
     @Test fun identityIsHostLowercasePlusExit() {
-        assertEquals("mgmt.example.net|one", box(url = "https://MGMT.Example.net").identity)
+        assertEquals("mgmt.jet-net.net|one", box(url = "https://MGMT.Jet-Net.net").identity)
         // Без выхода и токена (старая ссылка) — хост + имя (LINK-CONTRACT 1.2).
-        assertEquals("mgmt.example.net|n:Дом", box(exit = null).identity)
+        assertEquals("mgmt.jet-net.net|n:Дом", box(exit = null).identity)
     }
 
     @Test fun identityIgnoresSelectedExitNode() {
@@ -126,15 +126,15 @@ class JetBoxStoreTest {
     }
 
     @Test fun identityDiffersByHostAndExit() {
-        assertNotEquals(box().identity, box(url = "https://other.example.net").identity)
+        assertNotEquals(box().identity, box(url = "https://other.jet-net.net").identity)
         assertNotEquals(box().identity, box(exit = "two").identity)
     }
 
     @Test fun identityMatchesLinkBoxIdentity() {
-        val p = payload("jetbox://connect#k=$key&m=https://Mgmt.Example.net&e=one&n=Home")
+        val p = payload("jetbox://connect#k=$key&m=https://Mgmt.Jet-Net.net&e=one&n=Home")
         val b = JetBoxBox(p.managementURL, p.exitNodeName, "two", p.boxName, 0L)
         assertEquals(p.boxIdentity, b.identity)
-        val p2 = payload("jetbox://connect#k=$key&m=https://mgmt.example.net")
+        val p2 = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net")
         assertEquals(p2.boxIdentity, JetBoxBox(p2.managementURL, null, null, null, 0L).identity)
     }
 
@@ -143,28 +143,28 @@ class JetBoxStoreTest {
     // region renamed(by:) — iOS: testSameBoxLinkRenamesStoredBox и два соседних
 
     @Test fun sameBoxLinkRenamesStoredBox() {
-        val link = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=one&n=%D0%9D%D0%BE%D0%B2%D1%8B%D0%B9")
+        val link = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&n=%D0%9D%D0%BE%D0%B2%D1%8B%D0%B9")
         val renamed = box(name = "Старый").renamed(link)
         assertEquals("Новый", renamed?.boxName)
         assertEquals("остальное не трогаем", box(name = "Старый").copy(boxName = "Новый"), renamed)
     }
 
     @Test fun otherBoxLinkDoesNotRename() {
-        val link = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=two&n=Other")
+        val link = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=two&n=Other")
         assertNull(box(name = "Старый").renamed(link))
     }
 
     @Test fun linkWithoutNameOrWithSameNameChangesNothing() {
-        assertNull(box(name = "Дом").renamed(payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=one")))
+        assertNull(box(name = "Дом").renamed(payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one")))
         assertNull(
             box(name = "Дом").renamed(
-                payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=one&n=%D0%94%D0%BE%D0%BC")
+                payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&n=%D0%94%D0%BE%D0%BC")
             )
         )
     }
 
     @Test fun renameFromNullNameWorksAndKeepsSelectedExit() {
-        val link = payload("jetbox://connect#k=$key&m=https://mgmt.example.net&e=one&n=Home")
+        val link = payload("jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=one&n=Home")
         val renamed = box(name = null, selected = "two").renamed(link)
         assertNotNull(renamed)
         assertEquals("Home", renamed!!.boxName)
@@ -193,7 +193,7 @@ class JetBoxStoreTest {
     }
 
     @Test fun recordOfOlderBuildHasNoTokenOrFingerprint() {
-        val old = """{"managementURL":"https://mgmt.example.net","exitNodeName":"one","selectedExitNode":"one","boxName":"Дом","registeredAtMillis":1}"""
+        val old = """{"managementURL":"https://mgmt.jet-net.net","exitNodeName":"one","selectedExitNode":"one","boxName":"Дом","registeredAtMillis":1}"""
         val b = JetBoxBox.fromJson(old)!!
         assertNull(b.deviceTokenHash)
         assertNull(b.setupKeyFingerprint)
@@ -203,7 +203,7 @@ class JetBoxStoreTest {
 
     @Test fun identityRuleOfContract12() {
         val e = box(exit = "one").copy(deviceTokenHash = "t1")
-        assertEquals("выход важнее токена", "mgmt.example.net|one", e.identity)
+        assertEquals("выход важнее токена", "mgmt.jet-net.net|one", e.identity)
         val t1 = box(exit = null).copy(deviceTokenHash = "t1")
         assertEquals(t1.identity, t1.copy(boxName = "Другой тариф").identity)
         assertNotEquals(t1.identity, t1.copy(deviceTokenHash = "t2").identity)
@@ -211,7 +211,7 @@ class JetBoxStoreTest {
         val legacy = box(exit = null)
         assertEquals(legacy.identity, box(exit = null, selected = null).identity)
         assertNotEquals(legacy.identity, box(exit = null, name = "Дача").identity)
-        assertNotEquals(legacy.identity, box(exit = null, url = "https://other.example.net").identity)
+        assertNotEquals(legacy.identity, box(exit = null, url = "https://other.jet-net.net").identity)
     }
 
     @Test fun storedTokenMatchesLinkIdentity() {
@@ -233,7 +233,7 @@ class JetBoxStoreTest {
         assertTrue("1.0.2 имени не сравнивала", legacy.isSameConnection(renamed))
         assertEquals("Другое", legacy.renamed(renamed)?.boxName)
         assertFalse(legacy.isSameConnection(payload("jetbox://connect#k=$key&m=https://netbird.jet-net.net&e=exit")))
-        assertFalse(legacy.isSameConnection(payload("jetbox://connect#k=$key&m=https://other.example.net")))
+        assertFalse(legacy.isSameConnection(payload("jetbox://connect#k=$key&m=https://other.jet-net.net")))
 
         // Новая запись без e и t: имя — часть удостоверения, renamed() не действует.
         val modern = legacy.copy(setupKeyFingerprint = "ab".repeat(16))
