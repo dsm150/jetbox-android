@@ -28,6 +28,9 @@
     <string name="jb_exit_picker_empty">No exits found. The JetBox at your site may be powered off — contact support.</string>
     <string name="jb_err_broken_title">The link is damaged</string>
     <string name="jb_err_broken_body">This link cannot be used to connect. Ask JetBox support for a new one.</string>
+    <!-- Адрес management в ссылке вне маски *.jet-net.net (решение владельца 18.11.2026). -->
+    <string name="jb_err_foreign_title">This link doesn’t lead to a JetBox server</string>
+    <string name="jb_err_foreign_body">Your connection was not changed. Get a connection link in your JetBox account.</string>
     <string name="jb_err_offline_title">No internet</string>
     <string name="jb_err_offline_body">Connect to Wi-Fi or mobile data and try again.</string>
     <string name="jb_err_unreachable_title">JetBox is not responding</string>

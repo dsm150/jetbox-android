@@ -102,6 +102,8 @@ class JetBoxFailureTest {
         assertEquals("d", JetBoxFailure.KeyRejected("d").details)
         assertEquals("d", JetBoxFailure.Other("d").details)
         assertFalse(JetBoxFailure.BrokenLink.canRetry)
+        assertNull(JetBoxFailure.ForeignServer.details)
+        assertFalse(JetBoxFailure.ForeignServer.canRetry)
         for (f in listOf(
             JetBoxFailure.Offline, JetBoxFailure.TunnelFailed, JetBoxFailure.VpnPermissionDenied,
             JetBoxFailure.ManagementUnreachable(null), JetBoxFailure.KeyRejected(null), JetBoxFailure.Other("x"),

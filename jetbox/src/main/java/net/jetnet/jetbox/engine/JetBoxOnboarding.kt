@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import net.jetnet.jetbox.link.JetBoxConfig
 import net.jetnet.jetbox.link.JetBoxLink
 import net.jetnet.jetbox.link.JetBoxLinkPayload
 import net.jetnet.jetbox.logic.ExitNodeResolver
@@ -126,6 +127,14 @@ class JetBoxOnboarding(
                 log("JetBox: ссылка не проходит проверку формата, в сеть не идём")
                 cancelFlow()
                 _step.value = Step.Failed(JetBoxFailure.BrokenLink)
+                return true
+            }
+
+            // До любого вопроса («Другой JetBox») и действия: в сеть не идём, подключение не трогаем.
+            JetBoxLink.Outcome.ForeignServer -> {
+                log("JetBox: адрес management вне маски *${JetBoxConfig.MANAGEMENT_SUFFIX} — ссылка не на сервер JetBox, в сеть не идём")
+                cancelFlow()
+                _step.value = Step.Failed(JetBoxFailure.ForeignServer)
                 return true
             }
 

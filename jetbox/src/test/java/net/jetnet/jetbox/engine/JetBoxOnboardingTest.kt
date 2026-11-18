@@ -41,7 +41,7 @@ class JetBoxOnboardingTest {
     private val otherKey = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
     private fun url(
-        m: String = "https://nb.example.net",
+        m: String = "https://nb.jet-net.net",
         e: String? = "home-exit",
         n: String? = "Дом",
         k: String = key,
@@ -84,14 +84,36 @@ class JetBoxOnboardingTest {
 
     private fun TestScope.env() = Env(this)
 
-    private val oldBox = JetBoxBox("https://old.example.net", "old-exit", "old-exit", "Старый дом", 1L)
+    private val oldBox = JetBoxBox("https://old.jet-net.net", "old-exit", "old-exit", "Старый дом", 1L)
 
     // region ссылка
 
     @Test fun brokenLinkFailsWithoutRegister() = runTest {
         val env = env()
-        assertTrue(env.ob.handle("jetbox://connect#k=not-a-uuid&m=https://nb.example.net"))
+        assertTrue(env.ob.handle("jetbox://connect#k=not-a-uuid&m=https://nb.jet-net.net"))
         assertEquals(Step.Failed(JetBoxFailure.BrokenLink), env.ob.step.value)
+        advanceUntilIdle()
+        assertEquals(0, env.engine.registerCalls)
+    }
+
+    /**
+     * Management вне маски `*.jet-net.net`: отказ «не на сервер JetBox» ДО вопроса «Другой JetBox» —
+     * в сеть не идём, сохранённое подключение и туннель не трогаем.
+     */
+    @Test fun foreignServerFailsBeforeSwitchQuestion() = runTest {
+        val env = env()
+        env.store.currentBox = oldBox
+        assertTrue(env.ob.handle(url(m = "https://netbird.jet-net.net.evil.com")))
+        assertEquals(Step.Failed(JetBoxFailure.ForeignServer), env.ob.step.value)
+        advanceUntilIdle()
+        assertEquals(Step.Failed(JetBoxFailure.ForeignServer), env.ob.step.value)
+        assertEquals(oldBox, env.store.currentBox)
+        assertEquals(0, env.engine.isOnlineCalls)
+        assertEquals(0, env.engine.registerCalls)
+        assertEquals(0, env.engine.startCalls)
+        assertEquals(0, env.engine.stopCalls)
+        // «Попробовать снова» нечего: повтор закрывает экран, а не идёт в сеть.
+        env.ob.retry()
         advanceUntilIdle()
         assertEquals(0, env.engine.registerCalls)
     }
@@ -126,13 +148,13 @@ class JetBoxOnboardingTest {
 
         assertEquals(Step.Protected("home-exit"), env.ob.step.value)
         assertEquals(1, env.engine.registerCalls)
-        assertEquals("https://nb.example.net", env.engine.lastRegisterUrl)
+        assertEquals("https://nb.jet-net.net", env.engine.lastRegisterUrl)
         assertEquals(key, env.engine.lastRegisterKey)
         assertEquals(1, env.engine.startCalls)
         assertEquals(listOf("home-exit"), env.engine.selectedRoutes)
         assertEquals(
             JetBoxBox(
-                "https://nb.example.net", "home-exit", "home-exit", "Дом", 7_000L,
+                "https://nb.jet-net.net", "home-exit", "home-exit", "Дом", 7_000L,
                 setupKeyFingerprint = JetBoxIdentity.fingerprint(key),
             ),
             env.store.currentBox,
@@ -380,7 +402,7 @@ class JetBoxOnboardingTest {
 
     @Test fun sameBoxLinkRenamesImmediatelyAndGoesToReady() = runTest {
         val env = env()
-        env.store.currentBox = JetBoxBox("https://NB.example.net", "home-exit", "other-exit", "Старое", 1L)
+        env.store.currentBox = JetBoxBox("https://NB.jet-net.net", "home-exit", "other-exit", "Старое", 1L)
         assertTrue(env.ob.handle(url(n = "Дача")))
         // Как iOS: тот же JetBox — Ready без «переключить?», имя обновлено сразу, до нажатия.
         assertEquals(Step.Ready(payload(url(n = "Дача"))), env.ob.step.value)
@@ -436,7 +458,7 @@ class JetBoxOnboardingTest {
         assertEquals(1, env.engine.stopCalls)
         assertEquals(1, env.engine.registerCalls)
         assertEquals(Step.Protected("home-exit"), env.ob.step.value)
-        assertEquals("https://nb.example.net", env.store.currentBox?.managementURL)
+        assertEquals("https://nb.jet-net.net", env.store.currentBox?.managementURL)
     }
 
     @Test fun switchRegistersOnlyAfterDisconnected() = runTest {
@@ -482,7 +504,7 @@ class JetBoxOnboardingTest {
         env.ob.retry()
         advanceUntilIdle()
         assertEquals(Step.Protected("home-exit"), env.ob.step.value)
-        assertEquals("https://nb.example.net", env.store.currentBox?.managementURL)
+        assertEquals("https://nb.jet-net.net", env.store.currentBox?.managementURL)
     }
 
     @Test fun confirmSwitchOutsideConfirmStepIsIgnored() = runTest {
@@ -618,7 +640,7 @@ class JetBoxOnboardingTest {
         env.ob.handle(url())
         env.ob.connect()
         runCurrent()
-        val other = url(m = "https://other.example.net", n = "Дача")
+        val other = url(m = "https://other.jet-net.net", n = "Дача")
         env.ob.handle(other)
         gate.complete(Unit)
         advanceUntilIdle()
@@ -763,7 +785,7 @@ class JetBoxOnboardingTest {
 
     @Test fun otherConnectionAsksToSwitchAndRegistersFresh() = runTest {
         val env = env()
-        env.registeredBy(url(m = "https://old.example.net", e = "old-exit"))
+        env.registeredBy(url(m = "https://old.jet-net.net", e = "old-exit"))
         env.ob.handle(url(k = otherKey))
         assertTrue(env.ob.step.value is Step.ConfirmSwitch)
         env.ob.confirmSwitch()
@@ -798,7 +820,7 @@ class JetBoxOnboardingTest {
         // (Запись 1.0.2 знает только хост|e; облачные ссылки — см. legacyRecordAndCloudLinkGetsNewKey.)
         // Запись сборки до 1.0.3: отпечатка нет. Тот же JetBox — прежний ключ (как iOS).
         val env = env()
-        env.store.currentBox = JetBoxBox("https://nb.example.net", "home-exit", "home-exit", "Дом", 1L)
+        env.store.currentBox = JetBoxBox("https://nb.jet-net.net", "home-exit", "home-exit", "Дом", 1L)
         env.engine.configExists = true
         env.tunnelComesUp(listOf(exit))
         env.ob.handle(url())
@@ -808,7 +830,7 @@ class JetBoxOnboardingTest {
 
         // Другой JetBox на том же management — новый ключ.
         val env2 = env()
-        env2.store.currentBox = JetBoxBox("https://nb.example.net", "other-exit", "other-exit", "Дача", 1L)
+        env2.store.currentBox = JetBoxBox("https://nb.jet-net.net", "other-exit", "other-exit", "Дача", 1L)
         env2.engine.configExists = true
         env2.tunnelComesUp(listOf(exit))
         env2.ob.handle(url())
@@ -820,7 +842,7 @@ class JetBoxOnboardingTest {
 
     @Test fun failedFreshSwitchRestoresFilesAndOldTunnel() = runTest {
         val env = env()
-        env.registeredBy(url(m = "https://old.example.net", e = "old-exit", n = "Старый"))
+        env.registeredBy(url(m = "https://old.jet-net.net", e = "old-exit", n = "Старый"))
         val before = env.store.currentBox
         assertEquals("key=$key", env.engine.deviceKey())
         env.engine.registerResult = Result.failure(Exception("invalid setup key"))
@@ -882,7 +904,7 @@ class JetBoxOnboardingTest {
     /** Отмена посреди входа с новой личностью: файлы прежние, прежний туннель поднят снова. */
     @Test fun cancelDuringFreshRegistrationRestoresAndRaisesOldTunnel() = runTest {
         val env = env()
-        env.registeredBy(url(m = "https://old.example.net", e = "old-exit", n = "Старый"))
+        env.registeredBy(url(m = "https://old.jet-net.net", e = "old-exit", n = "Старый"))
         val before = env.store.currentBox
         val gate = CompletableDeferred<Unit>()
         env.engine.registerGate = gate
@@ -906,7 +928,7 @@ class JetBoxOnboardingTest {
     /** Прежние файлы не вернулись: отдельная ошибка, туннель не поднимаем; повтор начинает с возврата. */
     @Test fun restoreFailureShowsOwnErrorAndRetryRestoresFirst() = runTest {
         val env = env()
-        env.registeredBy(url(m = "https://old.example.net", e = "old-exit", n = "Старый"))
+        env.registeredBy(url(m = "https://old.jet-net.net", e = "old-exit", n = "Старый"))
         env.engine.registerResult = Result.failure(Exception("invalid setup key"))
         // Состояния не было, ядро его создаст, а при откате удалить его «не получится».
         val gate = CompletableDeferred<Unit>()
@@ -940,7 +962,7 @@ class JetBoxOnboardingTest {
     /** Виджет, плитка, always-on во время замены: запуск ядра закрыт. */
     @Test fun startDuringFreshRegistrationIsRefused() = runTest {
         val env = env()
-        env.registeredBy(url(m = "https://old.example.net", e = "old-exit", n = "Старый"))
+        env.registeredBy(url(m = "https://old.jet-net.net", e = "old-exit", n = "Старый"))
         val gate = CompletableDeferred<Unit>()
         env.engine.registerGate = gate
         env.ob.handle(url(k = otherKey))
@@ -958,7 +980,7 @@ class JetBoxOnboardingTest {
     /** Ядро ещё работает к моменту замены (не остановилось) — файлы не трогаем, прежний туннель жив. */
     @Test fun freshRegistrationRefusedWhileEngineRuns() = runTest {
         val env = env()
-        env.registeredBy(url(m = "https://old.example.net", e = "old-exit", n = "Старый"), running = false)
+        env.registeredBy(url(m = "https://old.jet-net.net", e = "old-exit", n = "Старый"), running = false)
         env.engine.running = true
         env.engine.onStop = { } // остановка «не доходит»
         env.ob.handle(url(k = otherKey))
@@ -995,7 +1017,7 @@ class JetBoxOnboardingTest {
         env.registeredBy(url(), running = false)
         env.engine.swap().stash(JetBoxIdentity.fingerprint(otherKey))
         env.engine.running = true
-        val r = env.engine.register("https://nb.example.net", key, freshIdentity = false) {}
+        val r = env.engine.register("https://nb.jet-net.net", key, freshIdentity = false) {}
         assertTrue("${r.exceptionOrNull()}", r.exceptionOrNull() is IdentityRegistration.EngineStillRunning)
         assertTrue("остатки не тронуты", env.engine.swap().hasLeftovers())
         assertFalse(env.engine.gateClosed)
@@ -1004,7 +1026,7 @@ class JetBoxOnboardingTest {
     /** Отмена посреди замены, а прежние файлы вернулись не до конца: туннель на полуразобранном диске не поднимаем. */
     @Test fun cancelWithFailedRestoreDoesNotRaiseOldTunnel() = runTest {
         val env = env()
-        env.registeredBy(url(m = "https://old.example.net", e = "old-exit", n = "Старый"))
+        env.registeredBy(url(m = "https://old.jet-net.net", e = "old-exit", n = "Старый"))
         val gate = CompletableDeferred<Unit>()
         env.engine.registerGate = gate
         env.ob.handle(url(k = otherKey))

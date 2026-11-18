@@ -14,10 +14,10 @@ class JetBoxIdentityTest {
     private val keyA = "11111111-2222-4333-8444-555555555555"
     private val keyB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
-    private fun link(k: String = keyA, m: String = "https://nb.example.net", e: String? = "home"): JetBoxLinkPayload =
+    private fun link(k: String = keyA, m: String = "https://nb.jet-net.net", e: String? = "home"): JetBoxLinkPayload =
         (JetBoxLink.parse("jetbox://connect#k=$k&m=$m" + (e?.let { "&e=$it" } ?: "")) as JetBoxLink.Outcome.Payload).payload
 
-    private fun box(m: String = "https://nb.example.net", e: String? = "home", fp: String? = JetBoxIdentity.fingerprint(keyA)) =
+    private fun box(m: String = "https://nb.jet-net.net", e: String? = "home", fp: String? = JetBoxIdentity.fingerprint(keyA)) =
         JetBoxBox(m, e, e, null, 1L, setupKeyFingerprint = fp)
 
     @Test fun fingerprintIsLikeIos() {
@@ -47,7 +47,7 @@ class JetBoxIdentityTest {
     }
 
     @Test fun otherManagementHostIsFresh() {
-        assertEquals(Plan.FRESH, JetBoxIdentity.plan(box(m = "https://old.example.net"), link(), configExists = true))
+        assertEquals(Plan.FRESH, JetBoxIdentity.plan(box(m = "https://old.jet-net.net"), link(), configExists = true))
     }
 
     @Test fun recordWithoutFingerprintFollowsIdentity() {
