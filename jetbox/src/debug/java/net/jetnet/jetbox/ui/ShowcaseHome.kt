@@ -31,7 +31,7 @@ enum class ShowcaseHomeState { OFF, CONNECTING, ON, OFFLINE, NOBOX }
  * Движок витрины (только debug), как `JetBoxShieldDemoView` iOS: туннеля нет, фазы отыгрываются
  * таймером; пир-дом и цифры — примерные (24 мс, напрямую, 48,2 МБ / 6,1 МБ, в сети с 12:34).
  */
-class ShowcaseEngine(initial: ShowcaseHomeState) : EngineApi {
+class ShowcaseEngine(initial: ShowcaseHomeState, manyExits: Boolean = false) : EngineApi {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val home = PeerSnapshot(
         ip = "100.64.0.10/16", fqdn = "home-ivanov.netbird.cloud", connected = true, relayed = false,
@@ -47,7 +47,11 @@ class ShowcaseEngine(initial: ShowcaseHomeState) : EngineApi {
         },
     )
     override val peers = MutableStateFlow(if (connected) listOf(home) else emptyList())
-    override val routes = MutableStateFlow(listOf(RouteInfo("home-ivanov", "0.0.0.0/0, ::/0", selected = connected)))
+    /** [manyExits] — три выхода (строка «Выход» в подробностях «простого» и выбор в листе «техно»). */
+    override val routes = MutableStateFlow(
+        (if (manyExits) listOf("home-ivanov", "dacha-router", "office-tverskaya") else listOf("home-ivanov"))
+            .map { RouteInfo(it, "0.0.0.0/0, ::/0", selected = connected && it == "home-ivanov") },
+    )
     override val connectedSinceMillis = MutableStateFlow(if (connected) System.currentTimeMillis() - 754_000L else null)
     override val lastError = MutableStateFlow<String?>(null)
     override val clientState = MutableStateFlow<Long?>(null)
@@ -65,8 +69,14 @@ class ShowcaseEngine(initial: ShowcaseHomeState) : EngineApi {
     override fun needsVpnConsent(): Intent? = null
     override fun isLoginRequired() = false
     override fun isRunning() = state.value != VpnDisplayState.DISCONNECTED
-    override suspend fun selectRoute(name: String) = Result.success(Unit)
-    override suspend fun deselectRoute(name: String) = Result.success(Unit)
+    override suspend fun selectRoute(name: String): Result<Unit> {
+        routes.value = routes.value.map { it.copy(selected = it.name == name) }
+        return Result.success(Unit)
+    }
+    override suspend fun deselectRoute(name: String): Result<Unit> {
+        routes.value = routes.value.map { if (it.name == name) it.copy(selected = false) else it }
+        return Result.success(Unit)
+    }
     override fun refresh() = Unit
     override fun setPolling(active: Boolean) = Unit
 
@@ -101,7 +111,7 @@ val ShowcaseUpdateSource = UpdateSource {
  * [update] — настоящая проверка обновлений на [ShowcaseUpdateSource] (капсула над панелью).
  */
 @Composable
-fun ShowcaseHome(initial: ShowcaseHomeState, update: Boolean = false) {
+fun ShowcaseHome(initial: ShowcaseHomeState, update: Boolean = false, details: Boolean = false, manyExits: Boolean = false) {
     val vm: HomeViewModel = viewModel(
         factory = viewModelFactory {
             initializer {
@@ -120,9 +130,9 @@ fun ShowcaseHome(initial: ShowcaseHomeState, update: Boolean = false) {
                 } else {
                     null
                 }
-                HomeViewModel(ShowcaseEngine(initial), store, HomeProbeRunner(HomeProbe { 24L }), updates = updates)
+                HomeViewModel(ShowcaseEngine(initial, manyExits), store, HomeProbeRunner(HomeProbe { 24L }), updates = updates)
             }
         },
     )
-    JetBoxHomeScreen(vm, presenting = false, onOpenSettings = {})
+    JetBoxHomeScreen(vm, presenting = false, onOpenSettings = {}, detailsInitiallyOpen = details)
 }
