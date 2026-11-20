@@ -117,4 +117,44 @@ class WordingTest {
         assertTrue(ru.getValue("jb_switch_message").getValue("").endsWith("Переключить? Прежнее подключение будет заменено."))
         assertTrue(en.getValue("jb_switch_message").getValue("").endsWith("Switch? The previous connection will be replaced."))
     }
+
+    /** Стиль «простое» (iOS 20.11.2026): тексты те же, что на iOS. */
+    @Test fun simpleStyleStringsMatchIos() {
+        val expectedRu = mapOf(
+            "jb_style_title" to "Оформление",
+            "jb_style_simple" to "Простое",
+            "jb_style_techno" to "Техно",
+            "jb_simple_tap_to_connect" to "Нажмите на круг, чтобы подключиться",
+            "jb_simple_wait" to "Пару секунд",
+            "jb_simple_details" to "Подробности подключения",
+            "jb_simple_about_title" to "Что такое JetBox",
+        )
+        for ((key, value) in expectedRu) assertEquals("ru $key", value, ru[key]?.get(""))
+        assertEquals("Appearance", en["jb_style_title"]?.get(""))
+        assertEquals("Simple", en["jb_style_simple"]?.get(""))
+        assertEquals("Techno", en["jb_style_techno"]?.get(""))
+        for (key in simpleKeys) assertNotNull("нет en $key", en[key])
+    }
+
+    private val simpleKeys = listOf(
+        "jb_style_title", "jb_style_simple", "jb_style_techno",
+        "jb_simple_tap_to_connect", "jb_simple_wait", "jb_simple_offline_hint", "jb_simple_details",
+        "jb_simple_about_title", "jb_simple_about_router", "jb_simple_about_guard",
+        "jb_simple_about_app", "jb_simple_about_privacy",
+    )
+
+    /**
+     * Легенда «простого» стиля (макет 20.11.2026): роутер дома и ключ обратно в свою сеть, а не
+     * «VPN куда-то». В его текстах нет VPN, анонимности, локаций и «разблокировать».
+     */
+    @Test fun simpleStyleStringsAvoidVpnWording() {
+        val ruWords = listOf("vpn", "впн", "аноним", "локаци", "разблок")
+        val enWords = listOf("vpn", "anonym", "location", "unblock")
+        for (key in simpleKeys) {
+            val r = ru.getValue(key).getValue("").lowercase()
+            val e = en.getValue(key).getValue("").lowercase()
+            for (w in ruWords) assertFalse("«$w» в ru $key: $r", r.contains(w))
+            for (w in enWords) assertFalse("«$w» в en $key: $e", e.contains(w))
+        }
+    }
 }

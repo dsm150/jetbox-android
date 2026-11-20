@@ -115,4 +115,18 @@
     <string name="jb_widget_action_disconnect">Отключить JetBox</string>
     <string name="jb_notification_login_required_title">JetBox отключён</string>
     <string name="jb_notification_login_required_body">Связь с домом прервана. Откройте ссылку подключения ещё раз.</string>
+
+    <!-- Стиль оформления (iOS 20.11.2026: JetBoxStyle) и тексты стиля «простое». -->
+    <string name="jb_style_title">Оформление</string>
+    <string name="jb_style_simple">Простое</string>
+    <string name="jb_style_techno">Техно</string>
+    <string name="jb_simple_tap_to_connect">Нажмите на круг, чтобы подключиться</string>
+    <string name="jb_simple_wait">Пару секунд</string>
+    <string name="jb_simple_offline_hint">Проверьте Wi-Fi или мобильную сеть</string>
+    <string name="jb_simple_details">Подробности подключения</string>
+    <string name="jb_simple_about_title">Что такое JetBox</string>
+    <string name="jb_simple_about_router">JetBox — роутер, который стоит между кабелем провайдера и вашей домашней сетью.</string>
+    <string name="jb_simple_about_guard">Он останавливает атаки из интернета, пока они не добрались до ваших устройств.</string>
+    <string name="jb_simple_about_app">Это приложение подключает телефон к домашней сети, когда вы не дома.</string>
+    <string name="jb_simple_about_privacy">Содержимое трафика приложение не собирает и не хранит.</string>
 </resources>
