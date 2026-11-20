@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -68,6 +69,7 @@ import kotlinx.coroutines.delay
 import net.jetnet.jetbox.BuildConfig
 import net.jetnet.jetbox.R
 import net.jetnet.jetbox.logic.JetBoxAdvancedAccess
+import net.jetnet.jetbox.logic.JetBoxStyle
 import net.jetnet.jetbox.logic.UpdateInfo
 import net.jetnet.jetbox.store.JetBoxBox
 import net.jetnet.jetbox.ui.theme.JBType
@@ -128,6 +130,7 @@ fun JetBoxSettingsScreen(
     var toast by remember { mutableStateOf<String?>(null) }
     var toastToken by remember { mutableIntStateOf(0) }
     var showsAbout by rememberSaveable { mutableStateOf(false) }
+    val styleHolder = LocalJetBoxStyle.current
 
     // Флаги могли смениться, пока экран был скрыт (расширенный режим, другой экран).
     LifecycleResumeEffect(access) {
@@ -165,15 +168,7 @@ fun JetBoxSettingsScreen(
             JetBoxAboutScreen(onBack = { showsAbout = false })
         } else {
             BackHandler(onBack = onClose)
-            JetBoxSettingsLayout(
-                boxName = box?.displayName,
-                versionText = versionText,
-                updateVersion = update?.versionName,
-                onUpdate = { update?.let { context.openUrl(it.url) } },
-                advancedUnlocked = unlocked,
-                showsAdvancedOff = advancedMode,
-                toast = toast,
-                onVersionTap = {
+            val onVersionTap = {
                     when (val r = access.registerTap()) {
                         JetBoxAdvancedAccess.TapResult.Silent -> Unit
                         is JetBoxAdvancedAccess.TapResult.Hint ->
@@ -185,21 +180,53 @@ fun JetBoxSettingsScreen(
                         JetBoxAdvancedAccess.TapResult.AlreadyOpen ->
                             show(resources.getString(R.string.jb_settings_advanced_already))
                     }
-                },
-                onOpenAbout = { showsAbout = true },
-                onOpenAdvanced = {
-                    access.isAdvancedMode = true
-                    advancedMode = true
-                    if (onOpenAdvanced != null) onOpenAdvanced() else context.openUpstreamMainActivity()
-                },
-                // Выключение закрывает и доступ: чтобы вернуться, снова нужны семь нажатий.
-                onAdvancedOff = {
-                    access.lock()
-                    unlocked = false
-                    advancedMode = false
-                },
-                onClose = onClose,
-            )
+                }
+            val openAdvanced = {
+                access.isAdvancedMode = true
+                advancedMode = true
+                if (onOpenAdvanced != null) onOpenAdvanced() else context.openUpstreamMainActivity()
+            }
+            // Выключение закрывает и доступ: чтобы вернуться, снова нужны семь нажатий.
+            val advancedOff = {
+                access.lock()
+                unlocked = false
+                advancedMode = false
+            }
+            if (styleHolder.isSimple) {
+                JetBoxSimpleSettingsLayout(
+                    boxName = box?.displayName,
+                    versionText = versionText,
+                    updateVersion = update?.versionName,
+                    onUpdate = { update?.let { context.openUrl(it.url) } },
+                    advancedUnlocked = unlocked,
+                    showsAdvancedOff = advancedMode,
+                    toast = toast,
+                    style = styleHolder.style,
+                    onStyleChange = styleHolder::set,
+                    onVersionTap = onVersionTap,
+                    onOpenAbout = { showsAbout = true },
+                    onOpenAdvanced = openAdvanced,
+                    onAdvancedOff = advancedOff,
+                    onClose = onClose,
+                )
+            } else {
+                JetBoxSettingsLayout(
+                    boxName = box?.displayName,
+                    versionText = versionText,
+                    updateVersion = update?.versionName,
+                    onUpdate = { update?.let { context.openUrl(it.url) } },
+                    advancedUnlocked = unlocked,
+                    showsAdvancedOff = advancedMode,
+                    toast = toast,
+                    onVersionTap = onVersionTap,
+                    onOpenAbout = { showsAbout = true },
+                    onOpenAdvanced = openAdvanced,
+                    onAdvancedOff = advancedOff,
+                    onClose = onClose,
+                    style = styleHolder.style,
+                    onStyleChange = styleHolder::set,
+                )
+            }
         }
     }
 }
@@ -219,6 +246,8 @@ fun JetBoxSettingsLayout(
     onClose: () -> Unit,
     updateVersion: String? = null,
     onUpdate: () -> Unit = {},
+    style: JetBoxStyle? = null,
+    onStyleChange: (JetBoxStyle) -> Unit = {},
 ) {
     val c = JetBoxTheme.colors
     JBPage(
@@ -245,6 +274,13 @@ fun JetBoxSettingsLayout(
                 JBListRow {
                     Text(stringResource(R.string.jb_settings_no_box), style = JBType.subheadline, color = c.muted)
                 }
+            }
+        }
+
+        // Оформление: «Простое» / «Техно» (iOS: сегментный Picker отдельной секцией).
+        if (style != null) {
+            JBSection(header = stringResource(R.string.jb_style_title)) {
+                JBListRow { JBSegmented(style, onStyleChange) }
             }
         }
 
@@ -292,6 +328,39 @@ fun JetBoxSettingsLayout(
 }
 
 // region Список в стиле insetGrouped iOS
+
+/** Сегментный переключатель iOS (`pickerStyle(.segmented)`): дорожка, выбранный — белая плашка. */
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.JBSegmented(style: JetBoxStyle, onSelect: (JetBoxStyle) -> Unit) {
+    val c = JetBoxTheme.colors
+    Row(
+        Modifier
+            .weight(1f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(c.fill())
+            .padding(3.dp),
+    ) {
+        JetBoxStyle.entries.forEach { item ->
+            val selected = item == style
+            Box(
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 40.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(if (selected) c.surface else Color.Transparent)
+                    .selectable(selected = selected, role = Role.RadioButton) { onSelect(item) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    stringResource(item.titleRes),
+                    style = JBType.subheadline.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal),
+                    color = c.text,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
 
 /**
  * Страница со шапкой (`navigationTitle` inline + кнопки по краям): шапка — поверхность с тонкой

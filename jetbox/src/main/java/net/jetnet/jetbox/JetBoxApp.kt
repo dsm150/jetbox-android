@@ -36,6 +36,7 @@ import net.jetnet.jetbox.engine.UpdateChecker
 import net.jetnet.jetbox.engine.updateCheckerFor
 import net.jetnet.jetbox.logic.ConnectionDefaults
 import net.jetnet.jetbox.logic.JetBoxAdvancedAccess
+import net.jetnet.jetbox.logic.JetBoxStyle
 import net.jetnet.jetbox.store.JetBoxStore
 import net.jetnet.jetbox.store.KeyValueStore
 import net.jetnet.jetbox.store.SharedPrefsStore
@@ -44,6 +45,8 @@ import net.jetnet.jetbox.ui.JetBoxFlowActions
 import net.jetnet.jetbox.ui.JetBoxFlowScreen
 import net.jetnet.jetbox.ui.JetBoxHomeScreen
 import net.jetnet.jetbox.ui.JetBoxSettingsScreen
+import net.jetnet.jetbox.ui.JetBoxStyleHolder
+import net.jetnet.jetbox.ui.JetBoxStyleRoot
 import net.jetnet.jetbox.ui.homeViewModelFactory
 import net.jetnet.jetbox.ui.rememberUrlOpener
 import net.jetnet.jetbox.widget.JetBoxWidget
@@ -131,9 +134,25 @@ enum class JetBoxScreen { Home, Settings }
  * Корень простого режима — `iOSMainView` (iOS) без апстримовых вкладок: главный экран, настройки
  * поверх (лист iOS — выезжают снизу), и над всем — экран по ссылке, пока идёт сценарий
  * (`.transition(.opacity)`, 0,2 с).
+ *
+ * Стиль оформления («простое» / «техно», [JetBoxStyle]) читается из настроек JetBox один раз и живёт
+ * в [JetBoxStyleHolder]; смена в настройках сохраняется туда же и перерисовывает виджеты.
  */
 @Composable
 fun JetBoxApp(onboarding: JetBoxOnboarding, engine: EngineApi, prefs: KeyValueStore) {
+    val context = LocalContext.current
+    val style = remember(prefs) {
+        val app = context.applicationContext
+        JetBoxStyleHolder(JetBoxStyle.read(prefs)) { chosen ->
+            JetBoxStyle.write(prefs, chosen)
+            JetBoxWidget.updateAll(app, JetBoxWidget.lastState(app))
+        }
+    }
+    JetBoxStyleRoot(style) { JetBoxAppContent(onboarding, engine, prefs) }
+}
+
+@Composable
+private fun JetBoxAppContent(onboarding: JetBoxOnboarding, engine: EngineApi, prefs: KeyValueStore) {
     val context = LocalContext.current
     val homeVm: HomeViewModel = viewModel(factory = homeViewModelFactory(context))
     val access = remember(prefs) { JetBoxAdvancedAccess(prefs) }

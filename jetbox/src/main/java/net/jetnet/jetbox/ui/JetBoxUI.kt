@@ -70,7 +70,8 @@ fun JetBoxLogo(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Image(
-            painter = painterResource(R.drawable.jb_mark),
+            // «Простое» всегда светлое: знак с тёмными буквами и при тёмной теме системы.
+            painter = painterResource(if (LocalJetBoxStyle.current.isSimple) R.drawable.jb_mark_day else R.drawable.jb_mark),
             contentDescription = null,
             contentScale = ContentScale.Fit,
             modifier = Modifier.height(markHeight),

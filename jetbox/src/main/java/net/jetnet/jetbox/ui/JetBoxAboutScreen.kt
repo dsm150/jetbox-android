@@ -39,7 +39,7 @@ fun JetBoxAboutScreen(
     year: Int = Calendar.getInstance().get(Calendar.YEAR),
 ) {
     BackHandler(onBack = onBack)
-    JetBoxAboutLayout(onBack, onOpenUrl, year)
+    if (LocalJetBoxStyle.current.isSimple) JetBoxSimpleAboutLayout(onBack, onOpenUrl, year) else JetBoxAboutLayout(onBack, onOpenUrl, year)
 }
 
 @Composable
