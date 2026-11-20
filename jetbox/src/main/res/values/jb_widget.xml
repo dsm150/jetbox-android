@@ -14,4 +14,10 @@
     <color name="jb_widget_blue">#1288E1</color>
     <color name="jb_widget_gray">#C7C7CC</color>
     <dimen name="jb_widget_radius">16dp</dimen>
+    <!-- Стиль «простое» (SimpleWidgetStyle iOS): акцент, его заливка, текст, приглушённый, тумблер «выкл». -->
+    <color name="jb_simple_accent">#7457EE</color>
+    <color name="jb_simple_accent_tint">#EFEAFE</color>
+    <color name="jb_simple_ink">#1F1A2E</color>
+    <color name="jb_simple_muted">#5D5870</color>
+    <color name="jb_simple_off">#D6D2E3</color>
 </resources>

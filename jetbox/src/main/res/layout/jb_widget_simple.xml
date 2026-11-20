@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Малый виджет стиля «простое» (SimpleWidgetView iOS): белая карточка, дом в фиолетовой плитке,
+    «JetBox», состояние и фиолетовый тумблер. Касание — то же, что у «техно» (WidgetToggleReceiver).
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/jb_simple_widget_background"
+    android:clipToOutline="true"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="10dp">
+
+    <ImageView
+        android:id="@+id/jb_widget_tile"
+        android:layout_width="46dp"
+        android:layout_height="46dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/jb_simple_widget_tile_off" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:fontFamily="sans-serif-black"
+        android:importantForAccessibility="no"
+        android:maxLines="1"
+        android:text="@string/jb_widget_title"
+        android:textColor="@color/jb_simple_ink"
+        android:textSize="18sp" />
+
+    <TextView
+        android:id="@+id/jb_widget_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:fontFamily="sans-serif"
+        android:maxLines="1"
+        android:text="@string/jb_widget_state_disconnected"
+        android:textColor="@color/jb_simple_muted"
+        android:textSize="17sp"
+        android:textStyle="bold" />
+
+    <ImageView
+        android:id="@+id/jb_widget_pill"
+        android:layout_width="54dp"
+        android:layout_height="30dp"
+        android:layout_marginTop="8dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/jb_simple_widget_pill_off" />
+</LinearLayout>
