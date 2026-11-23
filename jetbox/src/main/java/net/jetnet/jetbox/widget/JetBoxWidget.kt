@@ -86,6 +86,10 @@ class JetBoxWidget : AppWidgetProvider() {
             return build(context, layout, state)
         }
 
+        /** Разметка виджета для предпросмотра в debug-витрине (`--es widget`). */
+        internal fun preview(context: Context, layout: WidgetLayout, state: VpnDisplayState): RemoteViews =
+            build(context, layout, state)
+
         private fun build(context: Context, layout: WidgetLayout, state: VpnDisplayState): RemoteViews {
             val res = when (layout) {
                 WidgetLayout.COMPACT -> R.layout.jb_widget_compact

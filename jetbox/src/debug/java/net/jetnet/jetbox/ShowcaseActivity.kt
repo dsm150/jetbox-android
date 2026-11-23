@@ -1,10 +1,15 @@
 package net.jetnet.jetbox
 
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import net.jetnet.jetbox.logic.ShieldPhase
+import net.jetnet.jetbox.logic.VpnDisplayState
+import net.jetnet.jetbox.ui.ShowcaseWidget
+import net.jetnet.jetbox.widget.JetBoxWidget
 import net.jetnet.jetbox.ui.ShowcaseHome
 import net.jetnet.jetbox.ui.ShowcaseFlow
 import net.jetnet.jetbox.ui.ShowcaseHomeState
@@ -24,6 +29,10 @@ import net.jetnet.jetbox.ui.theme.JetBoxTheme
  * FAILED_KEY|FAILED_UNREACHABLE|FAILED_BROKEN|FAILED_FOREIGN|FAILED_VPN` — экран по ссылке (`--ez details true` — подробности
  * отказа раскрыты); `--es screen SETTINGS|SETTINGS_ADVANCED|SETTINGS_NOBOX|ABOUT` — настройки и «О программе»
  * (`--ez update true` — со строкой «Обновить до …»).
+ *
+ * `--es home ON --ez details true` — лист подробностей открыт, `--ez exits true` — три выхода.
+ * `--es widget OFF|ON` — предпросмотр виджета (три разметки), `--ez pinWidget true` — системный запрос
+ * «добавить виджет на рабочий стол».
  */
 class ShowcaseActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,12 +44,21 @@ class ShowcaseActivity : ComponentActivity() {
         val details = intent.getBooleanExtra("details", false)
         val update = intent.getBooleanExtra("update", false)
         val screen = intent.getStringExtra("screen")?.let { name -> ShowcaseScreenKind.entries.firstOrNull { it.name == name } }
+        val exits = intent.getBooleanExtra("exits", false)
+        val widget = intent.getStringExtra("widget")?.let { name -> if (name == "ON") VpnDisplayState.CONNECTED else VpnDisplayState.DISCONNECTED }
+        if (intent.getBooleanExtra("pinWidget", false)) {
+            val manager = AppWidgetManager.getInstance(this)
+            if (manager.isRequestPinAppWidgetSupported) {
+                manager.requestPinAppWidget(ComponentName(this, JetBoxWidget::class.java), null, null)
+            }
+        }
         setContent {
             JetBoxTheme {
                 when {
+                    widget != null -> ShowcaseWidget(widget)
                     flow != null -> ShowcaseFlow(flow, details)
                     screen != null -> ShowcaseSettings(screen, update)
-                    home != null -> ShowcaseHome(home, update)
+                    home != null -> ShowcaseHome(home, update, details, exits)
                     else -> ShowcaseScreen(single)
                 }
             }

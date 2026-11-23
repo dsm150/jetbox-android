@@ -20,8 +20,8 @@
 > - **RU не урезать:** единственная мобильная версия, работающая с РФ — не удалять и не менять по поведению ради
 >   паритета с iOS.
 > - **Simple в RU нет и не будет** — ни стилем по умолчанию, ни в переключателе. Перед каждой RU-сборкой проверить,
->   что в APK нет `JetBoxStyle` / `jetbox.style` (dex) и `jb_style_simple` (resources.arsc). На 23.11 Simple с
->   переключателем уже есть в `jetbox` (`d0572d0`…`3dc7f59`, 21.11, по умолчанию «Техно»), в Play 1.0.4 (14) — нет.
+>   что в APK нет `JetBoxStyle` / `jetbox.style` (dex) и `jb_style_*` (resources.arsc). Simple с переключателем
+>   был в `jetbox` 21–23.11 (`d0572d0`…`3dc7f59`), убран revert-коммитом 23.11; в Play 1.0.4 (14) его не было.
 
 ## 1. Окружение и ядро
 
@@ -190,6 +190,9 @@ $A --es flow PROTECTED                          # экран по ссылке: 
 $A --es flow FAILED_KEY --ez details true       # то же, подробности отказа раскрыты
 $A --es screen SETTINGS                         # SETTINGS|SETTINGS_ADVANCED|SETTINGS_NOBOX|ABOUT
 $A --es screen SETTINGS --ez update true        # настройки со строкой «Обновить до 1.1»
+$A --es home ON --ez details true --ez exits true  # лист подробностей открыт, три выхода
+$A --es widget ON                               # предпросмотр виджета: 2×2, 4×2, 4×1 (OFF|ON)
+$A --ez pinWidget true                          # системный запрос «Добавить виджет на рабочий стол»
 ```
 
 Полный список — в KDoc класса; если расходится с этим файлом, верен код.
