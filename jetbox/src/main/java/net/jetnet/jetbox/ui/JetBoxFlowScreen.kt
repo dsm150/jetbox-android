@@ -188,16 +188,9 @@ fun JetBoxFlowScreen(
     JetBoxFlowLayout(step, actions)
 }
 
-/**
- * Сам экран (`JetBoxFlowView.body`): фон, щит или логотип, содержимое шага, нижняя кнопка. В стиле
- * «простое» ([LocalJetBoxStyle]) — [JetBoxSimpleFlowLayout] с теми же шагами и кнопками.
- */
+/** Сам экран (`JetBoxFlowView.body`): фон, щит или логотип, содержимое шага, нижняя кнопка. */
 @Composable
 fun JetBoxFlowLayout(step: Step, actions: JetBoxFlowActions, detailsInitiallyExpanded: Boolean = false) {
-    if (LocalJetBoxStyle.current.isSimple) {
-        JetBoxSimpleFlowLayout(step, actions, detailsInitiallyExpanded)
-        return
-    }
     val phase = step.shieldPhase
     Box(Modifier.fillMaxSize()) {
         JetBoxBackdrop(phase)
@@ -414,7 +407,7 @@ private fun FlowFooter(step: Step, actions: JetBoxFlowActions) {
 // region Отказ
 
 /** Заголовок отказа (`JetBoxFailure.title` iOS). */
-internal val JetBoxFailure.titleRes: Int
+private val JetBoxFailure.titleRes: Int
     get() = when (this) {
         JetBoxFailure.BrokenLink -> R.string.jb_err_broken_title
         JetBoxFailure.ForeignServer -> R.string.jb_err_foreign_title
@@ -427,7 +420,7 @@ internal val JetBoxFailure.titleRes: Int
     }
 
 /** Объяснение отказа (`JetBoxFailure.message` iOS). */
-internal val JetBoxFailure.messageRes: Int
+private val JetBoxFailure.messageRes: Int
     get() = when (this) {
         JetBoxFailure.BrokenLink -> R.string.jb_err_broken_body
         JetBoxFailure.ForeignServer -> R.string.jb_err_foreign_body

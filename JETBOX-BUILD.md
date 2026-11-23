@@ -190,29 +190,9 @@ $A --es flow PROTECTED                          # экран по ссылке: 
 $A --es flow FAILED_KEY --ez details true       # то же, подробности отказа раскрыты
 $A --es screen SETTINGS                         # SETTINGS|SETTINGS_ADVANCED|SETTINGS_NOBOX|ABOUT
 $A --es screen SETTINGS --ez update true        # настройки со строкой «Обновить до 1.1»
-$A --es style simple --es home OFF              # любой экран в стиле «простое» (simple|techno; сохраняется в настройках)
-$A --es home ON --ez details true --ez exits true  # подробности открыты, три выхода (строка «Выход»)
-$A --es widget ON                               # предпросмотр виджета: 2×2, 4×2, 4×1 (OFF|ON) в сохранённом стиле
-$A --ez pinWidget true                          # системный запрос «Добавить виджет на рабочий стол»
 ```
 
 Полный список — в KDoc класса; если расходится с этим файлом, верен код.
-
-### Стиль оформления «простое» / «техно» (20.11.2026, как iOS 5e85332)
-
-Переключатель «Оформление: Простое / Техно» — в настройках JetBox, по умолчанию «Техно». Меняется только
-вид: разбор ссылки, замена подключения, выходы, x=0, виджет и плитка работают одинаково.
-
-- Хранение: `logic/JetBoxStyle` — prefs `jetbox`, ключ `jetbox.style`, значения `simple`/`techno` (как iOS);
-  неизвестное — «техно». В интерфейсе — `ui/JetBoxStyleUi.kt`: `JetBoxStyleHolder` + `LocalJetBoxStyle`,
-  корень `JetBoxStyleRoot` (в `JetBoxApp`); «простое» всегда светлое (тема и значки системных полос).
-- Ветвление — в точках входа экранов: `JetBoxHomeScreen`, `JetBoxFlowLayout`, `JetBoxSettingsScreen`,
-  `JetBoxAboutScreen`. Вид «простого» — отдельные файлы `JetBoxSimpleKit/Home/Flow/Settings.kt`.
-- Виджет читает стиль сам (`JetBoxWidget.build`), разметки `jb_widget_simple*.xml`; смена стиля перерисовывает
-  виджеты. Плитка быстрых настроек — апстримовая `NetbirdTileService`, система рисует только наш значок: не меняется.
-- Правило макета: в «простом» шрифт не мельче 17 sp (`JBSimple.font` падает на меньшем). Слов VPN, анонимность,
-  локация, разблокировать в его текстах нет — `WordingTest.simpleStyleStringsAvoidVpnWording`.
-- Снимки пар simple|techno — `../design-simple-2026-11-20/shots/` (сводная `00-сравнение-simple-vs-techno.png`).
 
 ## 3. Наш код — только `jetbox/`
 

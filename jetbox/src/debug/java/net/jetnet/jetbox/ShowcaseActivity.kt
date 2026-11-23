@@ -1,18 +1,10 @@
 package net.jetnet.jetbox
 
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import net.jetnet.jetbox.logic.JetBoxStyle
 import net.jetnet.jetbox.logic.ShieldPhase
-import net.jetnet.jetbox.logic.VpnDisplayState
-import net.jetnet.jetbox.ui.JetBoxStyleHolder
-import net.jetnet.jetbox.ui.JetBoxStyleRoot
-import net.jetnet.jetbox.ui.ShowcaseWidget
-import net.jetnet.jetbox.widget.JetBoxWidget
 import net.jetnet.jetbox.ui.ShowcaseHome
 import net.jetnet.jetbox.ui.ShowcaseFlow
 import net.jetnet.jetbox.ui.ShowcaseHomeState
@@ -32,12 +24,6 @@ import net.jetnet.jetbox.ui.theme.JetBoxTheme
  * FAILED_KEY|FAILED_UNREACHABLE|FAILED_BROKEN|FAILED_FOREIGN|FAILED_VPN` — экран по ссылке (`--ez details true` — подробности
  * отказа раскрыты); `--es screen SETTINGS|SETTINGS_ADVANCED|SETTINGS_NOBOX|ABOUT` — настройки и «О программе»
  * (`--ez update true` — со строкой «Обновить до …»).
- *
- * Стиль оформления: `--es style simple|techno` — сохраняется в настройках JetBox, как переключатель в
- * настройках (его видят и приложение, и виджет); без параметра — сохранённый. `--es home ON --ez details true`
- * — подробности открыты (лист «техно» / раскрытые подробности «простого»), `--ez exits true` — три выхода.
- * `--es widget OFF|ON` — предпросмотр виджета (три разметки), `--ez pinWidget true` — системный запрос
- * «добавить виджет на рабочий стол».
  */
 class ShowcaseActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,32 +35,13 @@ class ShowcaseActivity : ComponentActivity() {
         val details = intent.getBooleanExtra("details", false)
         val update = intent.getBooleanExtra("update", false)
         val screen = intent.getStringExtra("screen")?.let { name -> ShowcaseScreenKind.entries.firstOrNull { it.name == name } }
-        val exits = intent.getBooleanExtra("exits", false)
-        val widget = intent.getStringExtra("widget")?.let { name -> if (name == "ON") VpnDisplayState.CONNECTED else VpnDisplayState.DISCONNECTED }
-
-        val prefs = JetBoxProcess.prefs(this)
-        val save = { s: JetBoxStyle ->
-            JetBoxStyle.write(prefs, s)
-            JetBoxWidget.updateAll(applicationContext, JetBoxWidget.lastState(applicationContext))
-        }
-        intent.getStringExtra("style")?.let { save(JetBoxStyle.of(it)) }
-        val style = JetBoxStyleHolder(JetBoxStyle.read(prefs), save)
-        if (intent.getBooleanExtra("pinWidget", false)) {
-            val manager = AppWidgetManager.getInstance(this)
-            if (manager.isRequestPinAppWidgetSupported) {
-                manager.requestPinAppWidget(ComponentName(this, JetBoxWidget::class.java), null, null)
-            }
-        }
         setContent {
             JetBoxTheme {
-                JetBoxStyleRoot(style) {
-                    when {
-                        widget != null -> ShowcaseWidget(widget)
-                        flow != null -> ShowcaseFlow(flow, details)
-                        screen != null -> ShowcaseSettings(screen, update)
-                        home != null -> ShowcaseHome(home, update, details, exits)
-                        else -> ShowcaseScreen(single)
-                    }
+                when {
+                    flow != null -> ShowcaseFlow(flow, details)
+                    screen != null -> ShowcaseSettings(screen, update)
+                    home != null -> ShowcaseHome(home, update)
+                    else -> ShowcaseScreen(single)
                 }
             }
         }

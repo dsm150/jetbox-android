@@ -14,7 +14,6 @@ import android.widget.RemoteViews
 import net.jetnet.jetbox.JetBoxProcess
 import net.jetnet.jetbox.R
 import net.jetnet.jetbox.engine.JetBoxEngine
-import net.jetnet.jetbox.logic.JetBoxStyle
 import net.jetnet.jetbox.logic.VpnDisplayState
 
 /**
@@ -87,17 +86,11 @@ class JetBoxWidget : AppWidgetProvider() {
             return build(context, layout, state)
         }
 
-        /** Разметка виджета для предпросмотра в debug-витрине (`--es widget`). */
-        internal fun preview(context: Context, layout: WidgetLayout, state: VpnDisplayState): RemoteViews =
-            build(context, layout, state)
-
         private fun build(context: Context, layout: WidgetLayout, state: VpnDisplayState): RemoteViews {
-            // Стиль оформления выбирают в настройках приложения; при смене приложение перерисовывает виджеты.
-            val simple = JetBoxStyle.read(JetBoxProcess.prefs(context)) == JetBoxStyle.SIMPLE
             val res = when (layout) {
-                WidgetLayout.COMPACT -> if (simple) R.layout.jb_widget_simple_compact else R.layout.jb_widget_compact
-                WidgetLayout.SQUARE -> if (simple) R.layout.jb_widget_simple else R.layout.jb_widget
-                WidgetLayout.WIDE -> if (simple) R.layout.jb_widget_simple_wide else R.layout.jb_widget_wide
+                WidgetLayout.COMPACT -> R.layout.jb_widget_compact
+                WidgetLayout.SQUARE -> R.layout.jb_widget
+                WidgetLayout.WIDE -> R.layout.jb_widget_wide
             }
             val on = state == VpnDisplayState.CONNECTED
             val status = context.getString(
@@ -117,17 +110,6 @@ class JetBoxWidget : AppWidgetProvider() {
             val action = context.getString(if (on) R.string.jb_widget_action_disconnect else R.string.jb_widget_action_connect)
             return RemoteViews(context.packageName, res).apply {
                 setTextViewText(R.id.jb_widget_status, status)
-                if (simple) {
-                    // «Простое» (SimpleWidgetView iOS): вместо точки — плитка с домом, «подключено» — акцентом.
-                    setImageViewResource(R.id.jb_widget_tile, if (on) R.drawable.jb_simple_widget_tile_on else R.drawable.jb_simple_widget_tile_off)
-                    setTextColor(R.id.jb_widget_status, context.getColor(if (on) R.color.jb_simple_accent else R.color.jb_simple_muted))
-                    if (layout != WidgetLayout.COMPACT) {
-                        setImageViewResource(R.id.jb_widget_pill, if (on) R.drawable.jb_simple_widget_pill_on else R.drawable.jb_simple_widget_pill_off)
-                    }
-                    setContentDescription(android.R.id.background, "$action, $status")
-                    setOnClickPendingIntent(android.R.id.background, tapIntent(context))
-                    return@apply
-                }
                 setImageViewResource(R.id.jb_widget_dot, dot)
                 if (layout != WidgetLayout.COMPACT) {
                     // В переходных состояниях капсула — «выкл», как transitionPill() iOS.

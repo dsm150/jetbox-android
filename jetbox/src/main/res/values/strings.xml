@@ -113,18 +113,4 @@
     <string name="jb_widget_action_disconnect">Disconnect JetBox</string>
     <string name="jb_notification_login_required_title">JetBox disconnected</string>
     <string name="jb_notification_login_required_body">The connection to your home was lost. Open your connection link again.</string>
-
-    <!-- Стиль оформления (iOS 20.11.2026: JetBoxStyle) и тексты стиля «простое». -->
-    <string name="jb_style_title">Appearance</string>
-    <string name="jb_style_simple">Simple</string>
-    <string name="jb_style_techno">Techno</string>
-    <string name="jb_simple_tap_to_connect">Tap the circle to connect</string>
-    <string name="jb_simple_wait">Just a second</string>
-    <string name="jb_simple_offline_hint">Check Wi-Fi or mobile data</string>
-    <string name="jb_simple_details">Connection details</string>
-    <string name="jb_simple_about_title">What JetBox is</string>
-    <string name="jb_simple_about_router">JetBox is a router installed between your internet cable and your home network.</string>
-    <string name="jb_simple_about_guard">It blocks attacks from the internet before they reach your devices.</string>
-    <string name="jb_simple_about_app">This app connects your phone to your home network when you are away.</string>
-    <string name="jb_simple_about_privacy">The app does not collect or store the content of your traffic.</string>
 </resources>

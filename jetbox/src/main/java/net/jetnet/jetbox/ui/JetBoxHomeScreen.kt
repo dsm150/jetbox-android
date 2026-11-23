@@ -3,7 +3,6 @@ package net.jetnet.jetbox.ui
 import android.app.Activity
 import android.content.Context
 import android.content.res.Configuration
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -13,8 +12,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -105,24 +102,13 @@ fun homeViewModelFactory(context: Context): ViewModelProvider.Factory {
 /**
  * Главный экран с данными: опрос и замеры — только пока экран в `STARTED`; согласие VPN — системным
  * диалогом; лист подробностей — по нажатию на панель.
- *
- * Стиль «простое» ([LocalJetBoxStyle]) — тот же экран с теми же действиями в другом виде
- * ([JetBoxSimpleHomeLayout]): подробности раскрываются на месте, выход выбирается списком на весь экран.
- * [detailsInitiallyOpen] — для debug-витрины: лист подробностей («техно») или подробности («простое») открыты.
  */
 @Composable
-fun JetBoxHomeScreen(
-    vm: HomeViewModel,
-    presenting: Boolean,
-    onOpenSettings: () -> Unit,
-    detailsInitiallyOpen: Boolean = false,
-) {
+fun JetBoxHomeScreen(vm: HomeViewModel, presenting: Boolean, onOpenSettings: () -> Unit) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     val vpnDenied by vm.vpnDenied.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val simple = LocalJetBoxStyle.current.isSimple
-    var showsDetails by rememberSaveable { mutableStateOf(detailsInitiallyOpen && !simple) }
-    var showsExits by rememberSaveable { mutableStateOf(false) }
+    var showsDetails by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(vm, lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { vm.whileVisible() }
@@ -139,61 +125,24 @@ fun JetBoxHomeScreen(
     LaunchedEffect(presenting) {
         if (!presenting) return@LaunchedEffect
         showsDetails = false
-        showsExits = false
         vm.dismissVpnDenied()
     }
 
-    val onPower = {
-        when (val r = vm.press()) {
-            is PressResult.NeedsVpnConsent -> consent.launch(r.intent)
-            PressResult.Done -> Unit
-        }
-    }
-    if (simple) {
-        // Строка выхода в подробностях нужна списку маршрутов (iOS: `routes.getRoutes()` при подключении).
-        LaunchedEffect(ui.isConnected) { if (ui.isConnected) vm.refreshRoutes() }
-        Box(Modifier.fillMaxSize()) {
-            JetBoxSimpleHomeLayout(
-                ui = ui,
-                nowMillis = now,
-                onPower = onPower,
-                onSettings = onOpenSettings,
-                onOpenExits = {
-                    vm.refreshRoutes()
-                    showsExits = true
-                },
-                onUpdate = { ui.update?.let { openUrl(it.url) } },
-                startsExpanded = detailsInitiallyOpen,
-            )
-            AnimatedVisibility(
-                visible = showsExits && ui.hasBox && !presenting,
-                enter = slideInVertically(tween(300)) { it },
-                exit = slideOutVertically(tween(300)) { it },
-            ) {
-                BackHandler { showsExits = false }
-                JetBoxSimpleExitList(
-                    options = ui.exits,
-                    selected = ui.selectedExit,
-                    onSelect = { name ->
-                        if (name == null) vm.clearExit() else vm.selectExit(name)
-                        showsExits = false
-                    },
-                    onClose = { showsExits = false },
-                )
+    JetBoxHomeLayout(
+        ui = ui,
+        nowMillis = now,
+        onPower = {
+            when (val r = vm.press()) {
+                is PressResult.NeedsVpnConsent -> consent.launch(r.intent)
+                PressResult.Done -> Unit
             }
-        }
-    } else {
-        JetBoxHomeLayout(
-            ui = ui,
-            nowMillis = now,
-            onPower = onPower,
-            onSettings = onOpenSettings,
-            onOpenDetails = { showsDetails = true },
-            onUpdate = { ui.update?.let { openUrl(it.url) } },
-        )
-    }
+        },
+        onSettings = onOpenSettings,
+        onOpenDetails = { showsDetails = true },
+        onUpdate = { ui.update?.let { openUrl(it.url) } },
+    )
 
-    if (showsDetails && ui.box != null && !presenting && !simple) {
+    if (showsDetails && ui.box != null && !presenting) {
         LaunchedEffect(Unit) { vm.refreshRoutes() }
         JetBoxConnectionSheet(
             ui = ui,
