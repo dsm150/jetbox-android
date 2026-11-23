@@ -104,16 +104,11 @@ fun homeViewModelFactory(context: Context): ViewModelProvider.Factory {
  * диалогом; лист подробностей — по нажатию на панель.
  */
 @Composable
-fun JetBoxHomeScreen(
-    vm: HomeViewModel,
-    presenting: Boolean,
-    onOpenSettings: () -> Unit,
-    detailsInitiallyOpen: Boolean = false,
-) {
+fun JetBoxHomeScreen(vm: HomeViewModel, presenting: Boolean, onOpenSettings: () -> Unit) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     val vpnDenied by vm.vpnDenied.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    var showsDetails by rememberSaveable { mutableStateOf(detailsInitiallyOpen) }
+    var showsDetails by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(vm, lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { vm.whileVisible() }
