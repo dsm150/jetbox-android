@@ -81,6 +81,37 @@ class EmailCodeSignInTest {
         assertEquals("Fabrika", env.store.currentBox?.boxName)
     }
 
+    /**
+     * Ответ RU-Кабинета, как в ревью руководителя 25.11: `k` — UUID в верхнем регистре, `e` нет (management не ответил),
+     * `b`, `p`, `s` есть. Подключение идёт без падения: выход — единственный доступный, а если его нет — без выхода.
+     */
+    @Test fun upperCaseKeyWithoutExitConnects() = runTest {
+        val upper = key.uppercase()
+        val link = "https://box.jet-net.net/connect#k=$upper&m=https%3A%2F%2Fnetbird.jet-net.net&n=Fabrika" +
+            "&b=100.64.0.7&p=android&s=XY_KvXXY0YNGAxTwvJ_htjoL8Cm21W32NSuBWtG_CydTZeRFNku3RjxtLw7Todmn0WcstEA1Wjru0b24cCP3AA"
+        val env = Env(this)
+        signIn(env, link)
+        val ready = env.ob.step.value as Step.Ready
+        assertEquals(upper, ready.payload.setupKey)
+        assertEquals(null, ready.payload.exitNodeName)
+        env.ob.connect()
+        advanceUntilIdle()
+        assertEquals(upper, env.engine.lastRegisterKey)
+        assertEquals("нет выходов — под защитой без выхода, без отказа", Step.Protected(null), env.ob.step.value)
+
+        // Тот же ответ, когда выход коробки виден ядру, — он единственный и включается сам.
+        val one = Env(this)
+        one.engine.onStart = {
+            it.emit(VpnDisplayState.CONNECTED)
+            it.routes.value = listOf(exit)
+        }
+        signIn(one, link)
+        one.ob.connect()
+        advanceUntilIdle()
+        assertEquals(Step.Protected("sv-fabrika-exit"), one.ob.step.value)
+        assertEquals(listOf("sv-fabrika-exit"), one.engine.selectedRoutes)
+    }
+
     /** Без connect_url — ссылка из полей verify (k, m, e, n). */
     @Test fun fieldsOnlyResponseWorksToo() = runTest {
         val env = Env(this)

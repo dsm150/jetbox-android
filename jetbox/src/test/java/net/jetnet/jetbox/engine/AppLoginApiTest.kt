@@ -79,6 +79,11 @@ class AppLoginApiTest {
         assertEquals(LoginRequestResult.Unavailable("HTTP 500"), api().request("user@example.com", "ru"))
     }
 
+    @Test fun requestBadEmail() = runBlocking {
+        serve("422 Unprocessable Entity", """{"error":"bad_request"}""")
+        assertEquals(LoginRequestResult.BadEmail, api().request("user@example", "ru"))
+    }
+
     @Test fun requestNoServer() = runBlocking {
         server.close()
         assertTrue(api().request("user@example.com", "ru") is LoginRequestResult.Unavailable)
@@ -118,15 +123,19 @@ class AppLoginApiTest {
         serve("410 Gone", """{"error":"expired"}""")
         assertEquals(LoginVerifyResult.Expired, api().verifyCode(email, "000000"))
         serve("410 Gone", """{"error":"expired","reason":"used"}""")
+        assertEquals(LoginVerifyResult.Used, api().verifyCode(email, "000000"))
+        serve("410 Gone")
         assertEquals(LoginVerifyResult.Expired, api().verifyCode(email, "000000"))
         serve("409 Conflict", """{"error":"device_limit"}""")
         assertEquals(LoginVerifyResult.DeviceLimit, api().verifyCode(email, "000000"))
         serve("409 Conflict", """{"error":"not_available"}""")
-        assertEquals(LoginVerifyResult.Failed("HTTP 409 not_available"), api().verifyCode(email, "000000"))
+        assertEquals(LoginVerifyResult.NotAvailable, api().verifyCode(email, "000000"))
         serve("429 Too Many Requests", """{"error":"rate_limited","retry_after":60}""")
         assertEquals(LoginVerifyResult.TooManyRequests, api().verifyCode(email, "000000"))
         serve("502 Bad Gateway", """{"error":"unavailable"}""")
-        assertEquals(LoginVerifyResult.Failed("HTTP 502"), api().verifyCode(email, "000000"))
+        assertEquals(LoginVerifyResult.TryAgain, api().verifyCode(email, "000000"))
+        serve("500 Internal Server Error")
+        assertEquals(LoginVerifyResult.Failed("HTTP 500"), api().verifyCode(email, "000000"))
         serve("200 OK", "not json")
         assertTrue(api().verifyCode(email, "000000") is LoginVerifyResult.Failed)
         serve("200 OK", "{}")

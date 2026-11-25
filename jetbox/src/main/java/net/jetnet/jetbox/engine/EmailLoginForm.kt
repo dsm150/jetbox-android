@@ -30,7 +30,7 @@ class EmailLoginForm(
     enum class Error { INVALID_EMAIL, UNAVAILABLE, TOO_MANY }
 
     /** Отказы ввода кода. */
-    enum class CodeError { BAD_CODE, NO_ATTEMPTS, EXPIRED, DEVICE_LIMIT, TOO_MANY, UNAVAILABLE }
+    enum class CodeError { BAD_CODE, NO_ATTEMPTS, EXPIRED, USED, DEVICE_LIMIT, NOT_AVAILABLE, TOO_MANY, TRY_AGAIN, UNAVAILABLE }
 
     sealed class State {
         /** Ввод адреса; [error] — что не так с прошлой попыткой. */
@@ -54,7 +54,7 @@ class EmailLoginForm(
             val sendError: Error? = null,
         ) : State() {
             /** Код больше не примут — нужен новый. */
-            val needsNewCode: Boolean get() = error == CodeError.EXPIRED || error == CodeError.NO_ATTEMPTS
+            val needsNewCode: Boolean get() = error == CodeError.EXPIRED || error == CodeError.USED || error == CodeError.NO_ATTEMPTS
         }
     }
 
@@ -80,6 +80,7 @@ class EmailLoginForm(
             _state.value = when (api.request(email, lang)) {
                 LoginRequestResult.Accepted -> State.Code(email, clock() + cooldownMs)
                 LoginRequestResult.TooManyRequests -> State.Editing(Error.TOO_MANY)
+                LoginRequestResult.BadEmail -> State.Editing(Error.INVALID_EMAIL)
                 is LoginRequestResult.Unavailable -> State.Editing(Error.UNAVAILABLE)
             }
         }
@@ -111,8 +112,11 @@ class EmailLoginForm(
                     attemptsLeft = result.attemptsLeft,
                 )
                 LoginVerifyResult.Expired -> now.copy(verifying = false, error = CodeError.EXPIRED, attemptsLeft = null)
+                LoginVerifyResult.Used -> now.copy(verifying = false, error = CodeError.USED, attemptsLeft = null)
                 LoginVerifyResult.DeviceLimit -> now.copy(verifying = false, error = CodeError.DEVICE_LIMIT)
+                LoginVerifyResult.NotAvailable -> now.copy(verifying = false, error = CodeError.NOT_AVAILABLE)
                 LoginVerifyResult.TooManyRequests -> now.copy(verifying = false, error = CodeError.TOO_MANY)
+                LoginVerifyResult.TryAgain -> now.copy(verifying = false, error = CodeError.TRY_AGAIN)
                 is LoginVerifyResult.Unreachable, is LoginVerifyResult.Failed ->
                     now.copy(verifying = false, error = CodeError.UNAVAILABLE)
             }
@@ -131,6 +135,7 @@ class EmailLoginForm(
                 // Лимит Кабинета — новый отсчёт, чтобы не долбить его кнопкой.
                 LoginRequestResult.TooManyRequests ->
                     now.copy(resending = false, resendAt = clock() + cooldownMs, sendError = Error.TOO_MANY)
+                LoginRequestResult.BadEmail -> State.Editing(Error.INVALID_EMAIL)
                 is LoginRequestResult.Unavailable -> now.copy(resending = false, sendError = Error.UNAVAILABLE)
             }
         }

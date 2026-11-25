@@ -17,9 +17,11 @@ import java.net.URL
  * 2026-11-25-corporate-vpn-fabrika-design):
  *
  * * `POST login/request {"email","lang","platform"}` → всегда `202` (есть адрес или нет — ответ один); `429` — лимит;
- * * `POST login/verify {"email","code","device_name","platform"}` → `200 {setup_key, management_url, exit_node,
- *   site_name, connect_url, …}`; `401 {"error":"bad_code","attempts_left":N}`; `410` — код истёк или использован;
- *   `409 {"error":"device_limit"}` — на человеке уже предельное число устройств; `429` — лимит.
+ *   `422 {"error":"bad_request"}` — Кабинет счёл адрес кривым;
+ * * `POST login/verify {"email","code","device_name","platform"}` → `200 {…, connect_url}` (RU-Кабинет присылает
+ *   `connect_url` всегда); `401 {"error":"bad_code","attempts_left":N}`; `410` — код истёк, `410 … "reason":"used"` —
+ *   уже использован; `409 {"error":"device_limit"}` — предел устройств на человека; `409 {"error":"not_available"}` —
+ *   подключение недоступно; `429` — лимит; `502 {"error":"unavailable"}` — management не выдал ключ, повторить.
  *
  * Только вход по коду: ссылки из письма, токена приложения и удаления аккаунта в RU-приложении нет (слово
  * владельца 25.11.2026: «взять только часть саморегистрации из приложения»).
@@ -35,6 +37,8 @@ sealed class LoginRequestResult {
     /** Принято: письмо ушло, если адрес известен Кабинету или подходит для саморегистрации (ответ одинаковый). */
     data object Accepted : LoginRequestResult()
     data object TooManyRequests : LoginRequestResult()
+    /** `422 bad_request`: Кабинет не принял адрес. */
+    data object BadEmail : LoginRequestResult()
     /** Нет сети, Кабинет не ответил или ответил ошибкой. */
     data class Unavailable(val details: String) : LoginRequestResult()
 }
@@ -44,8 +48,14 @@ sealed class LoginVerifyResult {
     data class Success(val connectUrl: String) : LoginVerifyResult() {
         override fun toString(): String = "Success(…)"
     }
-    /** `410`: код устарел, погашен или уже использован — нужен новый. */
+    /** `410`: код устарел или погашен — нужен новый. */
     data object Expired : LoginVerifyResult()
+    /** `410 {"error":"expired","reason":"used"}`: этим кодом уже вошли. */
+    data object Used : LoginVerifyResult()
+    /** `409 not_available`: подключение сейчас недоступно (коробка не в работе). */
+    data object NotAvailable : LoginVerifyResult()
+    /** `502 unavailable`: Кабинет не получил ключ у management — повторить тот же код. */
+    data object TryAgain : LoginVerifyResult()
     /** `409 device_limit`: на человеке уже предельное число устройств. */
     data object DeviceLimit : LoginVerifyResult()
     data object TooManyRequests : LoginVerifyResult()
@@ -53,7 +63,7 @@ sealed class LoginVerifyResult {
     data class BadCode(val attemptsLeft: Int?) : LoginVerifyResult()
     /** Сеть не дошла до Кабинета. */
     data class Unreachable(val details: String) : LoginVerifyResult()
-    /** Кабинет ответил, но не так, как ждём (5xx, `409 not_available`, кривой ответ). */
+    /** Кабинет ответил, но не так, как ждём (прочие коды, кривой ответ). */
     data class Failed(val details: String) : LoginVerifyResult()
 }
 
@@ -100,6 +110,7 @@ class HttpAppLoginApi(
             is Reply.Status -> when {
                 r.code in 200..299 -> LoginRequestResult.Accepted
                 r.code == 429 -> LoginRequestResult.TooManyRequests
+                r.code == 422 -> LoginRequestResult.BadEmail
                 else -> LoginRequestResult.Unavailable("HTTP ${r.code}")
             }
         }
@@ -124,14 +135,15 @@ class HttpAppLoginApi(
                     jsonOf(r.body)?.takeIf { it.has("attempts_left") }
                         ?.optInt("attempts_left", -1)?.takeIf { it >= 0 },
                 )
-                410 -> LoginVerifyResult.Expired
+                410 -> if (jsonOf(r.body)?.optString("reason") == REASON_USED) LoginVerifyResult.Used else LoginVerifyResult.Expired
                 // 409 бывает двух видов: предел устройств и «коробка перестала быть боевой» (not_available).
                 409 -> if (jsonOf(r.body)?.optString("error") == ERROR_NOT_AVAILABLE) {
-                    LoginVerifyResult.Failed("HTTP 409 $ERROR_NOT_AVAILABLE")
+                    LoginVerifyResult.NotAvailable
                 } else {
                     LoginVerifyResult.DeviceLimit
                 }
                 429 -> LoginVerifyResult.TooManyRequests
+                502 -> LoginVerifyResult.TryAgain
                 else -> LoginVerifyResult.Failed("HTTP ${r.code}")
             }
         }
@@ -164,10 +176,10 @@ class HttpAppLoginApi(
             // Без setFixedLengthStreamingMode: в потоковом режиме JDK при 401 не отдаёт тело (attempts_left).
             conn.outputStream.use { it.write(bytes) }
             val code = conn.responseCode
-            // Тело нужно только у 200 (подключение), 401 (остаток попыток) и 409 (вид отказа).
+            // Тело нужно только у 200 (подключение), 401 (остаток попыток), 409 и 410 (вид отказа).
             val body = when (code) {
                 200 -> conn.inputStream.use(::readLimited)
-                401, 409 -> conn.errorStream?.use(::readLimited)
+                401, 409, 410 -> conn.errorStream?.use(::readLimited)
                 else -> null
             }
             Reply.Status(code, body)
@@ -196,6 +208,7 @@ class HttpAppLoginApi(
     companion object {
         const val PLATFORM = "android"
         const val ERROR_NOT_AVAILABLE = "not_available"
+        const val REASON_USED = "used"
         const val TIMEOUT_MS = 15_000
         const val MAX_BYTES = 64 * 1024
     }

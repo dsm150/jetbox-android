@@ -100,6 +100,19 @@ class SignedLinkOnboardingTest {
         assertEquals(0, env.engine.registerCalls + prod.engine.registerCalls)
     }
 
+    /** Подписанная ссылка RU-Кабинета: `k` в верхнем регистре, без `e`, с `b` и `p` — принимается. */
+    @Test fun signedCabinetLinkUpperKeyNoExit() = runTest {
+        val env = Env(this, listOf(testPublic))
+        val link = signed(
+            "https://box.jet-net.net/connect",
+            "k=${key.uppercase()}&m=https%3A%2F%2Fnetbird.jet-net.net&n=Fabrika&b=100.64.0.7&p=android",
+        )
+        assertTrue(env.ob.handle(link))
+        val ready = env.ob.step.value as Step.Ready
+        assertEquals(key.uppercase(), ready.payload.setupKey)
+        assertEquals(null, ready.payload.exitNodeName)
+    }
+
     /** Ответ verify (вход по рабочей почте, TLS) — доверенный, подпись не нужна. */
     @Test fun trustedVerifyLinkAccepted() = runTest {
         val env = Env(this, listOf(testPublic))

@@ -269,8 +269,11 @@ private fun CodeErrorText(error: EmailLoginForm.CodeError, attemptsLeft: Int?, s
             else stringResource(R.string.jb_login_code_err_bad)
         EmailLoginForm.CodeError.NO_ATTEMPTS -> stringResource(R.string.jb_login_code_err_no_attempts)
         EmailLoginForm.CodeError.EXPIRED -> stringResource(R.string.jb_login_code_err_expired)
+        EmailLoginForm.CodeError.USED -> stringResource(R.string.jb_login_code_err_used)
         EmailLoginForm.CodeError.DEVICE_LIMIT -> stringResource(R.string.jb_login_code_err_device_limit)
+        EmailLoginForm.CodeError.NOT_AVAILABLE -> stringResource(R.string.jb_login_code_err_not_available)
         EmailLoginForm.CodeError.TOO_MANY -> stringResource(R.string.jb_login_err_too_many)
+        EmailLoginForm.CodeError.TRY_AGAIN -> stringResource(R.string.jb_login_code_err_try_again)
         EmailLoginForm.CodeError.UNAVAILABLE -> stringResource(R.string.jb_login_err_unavailable)
     }
     Text(

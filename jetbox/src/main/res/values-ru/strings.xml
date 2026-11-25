@@ -143,7 +143,10 @@
     </plurals>
     <string name="jb_login_code_err_no_attempts">Неверный код, попыток больше нет. Запросите новый код.</string>
     <string name="jb_login_code_err_expired">Код устарел. Запросите новый.</string>
-    <string name="jb_login_code_err_device_limit">На вашей учётной записи уже предельное число устройств. Отключите лишнее в Личном кабинете или попросите администратора добавить.</string>
+    <string name="jb_login_code_err_used">Этот код уже использован. Запросите новый.</string>
+    <string name="jb_login_code_err_device_limit">На вашей учётной записи уже 2 устройства. Отключите одно или попросите администратора добавить.</string>
+    <string name="jb_login_code_err_not_available">Подключение сейчас недоступно. Попробуйте позже или напишите в поддержку JetBox.</string>
+    <string name="jb_login_code_err_try_again">JetBox не успел ответить. Попробуйте ещё раз.</string>
     <string name="jb_login_code_new">Прислать новый код</string>
     <string name="jb_login_code_new_in">Новый код — через %1$d с</string>
 </resources>

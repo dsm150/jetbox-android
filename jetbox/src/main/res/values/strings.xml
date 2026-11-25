@@ -139,7 +139,10 @@
     </plurals>
     <string name="jb_login_code_err_no_attempts">Wrong code, and no attempts are left. Request a new code.</string>
     <string name="jb_login_code_err_expired">This code has expired. Request a new one.</string>
-    <string name="jb_login_code_err_device_limit">Your account already has the maximum number of devices. Disconnect one in your JetBox account or ask your administrator for more.</string>
+    <string name="jb_login_code_err_used">This code was already used. Request a new one.</string>
+    <string name="jb_login_code_err_device_limit">Your account already has 2 devices. Disconnect one or ask your administrator to add more.</string>
+    <string name="jb_login_code_err_not_available">Connecting isn’t available right now. Try again later or contact JetBox support.</string>
+    <string name="jb_login_code_err_try_again">JetBox didn’t respond in time. Try again.</string>
     <string name="jb_login_code_new">Send a new code</string>
     <string name="jb_login_code_new_in">New code in %1$d s</string>
 </resources>

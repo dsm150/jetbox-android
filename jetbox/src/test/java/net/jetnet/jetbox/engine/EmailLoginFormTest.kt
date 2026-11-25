@@ -148,9 +148,24 @@ class EmailLoginFormTest {
             LoginVerifyResult.DeviceLimit to CodeError.DEVICE_LIMIT,
             LoginVerifyResult.TooManyRequests to CodeError.TOO_MANY,
             LoginVerifyResult.Unreachable("x") to CodeError.UNAVAILABLE,
-            LoginVerifyResult.Failed("HTTP 409 not_available") to CodeError.UNAVAILABLE,
+            LoginVerifyResult.NotAvailable to CodeError.NOT_AVAILABLE,
+            LoginVerifyResult.TryAgain to CodeError.TRY_AGAIN,
+            LoginVerifyResult.Failed("HTTP 500") to CodeError.UNAVAILABLE,
+        )) {
+            api.codeResults += r
+            f.submitCode("123456")
+            advanceUntilIdle()
+            val s = f.state.value as State.Code
+            assertEquals(e, s.error)
+            assertFalse("тот же код можно ввести снова", s.needsNewCode)
+        }
+        for ((r, e) in listOf(
+            LoginVerifyResult.Used to CodeError.USED,
             LoginVerifyResult.Expired to CodeError.EXPIRED,
         )) {
+            f.changeEmail()
+            f.submit(email)
+            advanceUntilIdle()
             api.codeResults += r
             f.submitCode("123456")
             advanceUntilIdle()
@@ -181,6 +196,11 @@ class EmailLoginFormTest {
         f.submit(email)
         advanceUntilIdle()
         assertEquals(State.Editing(Error.UNAVAILABLE), f.state.value)
+        // 422 bad_request — Кабинет не принял адрес: как локальная проверка.
+        api.requestResult = LoginRequestResult.BadEmail
+        f.submit(email)
+        advanceUntilIdle()
+        assertEquals(State.Editing(Error.INVALID_EMAIL), f.state.value)
         assertEquals(email, f.lastEmail)
     }
 
