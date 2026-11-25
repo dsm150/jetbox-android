@@ -39,7 +39,7 @@ class IdentityVectorsTest(
     }
 
     private fun payload(): JetBoxLinkPayload {
-        val r = JetBoxLink.parse(link)
+        val r = JetBoxLink.parse(link, signed = false)
         assertTrue("$about: ожидали payload, получили $r", r is JetBoxLink.Outcome.Payload)
         return (r as JetBoxLink.Outcome.Payload).payload
     }

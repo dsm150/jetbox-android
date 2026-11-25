@@ -21,6 +21,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 import net.jetnet.jetbox.link.JetBoxConfig
 import net.jetnet.jetbox.link.JetBoxLink
+import net.jetnet.jetbox.link.JetBoxLinkSignature
 import net.jetnet.jetbox.link.JetBoxLinkPayload
 import net.jetnet.jetbox.logic.ExitNodeResolver
 import net.jetnet.jetbox.logic.ExitOutcome
@@ -74,6 +75,10 @@ class JetBoxOnboarding(
     /** Журнал. Значение ключа сюда не попадает — только маска. */
     private val log: (String) -> Unit = { Log.i(TAG, it) },
     private val clock: () -> Long = System::currentTimeMillis,
+    /** Правила разбора ссылки ([JetBoxLink.parse]): JetBox safety — только подписанные. В тестах подменяются. */
+    private val signedLinks: Boolean = JetBoxConfig.LINK_SIGNED,
+    /** Открытые части ключа подписи ссылок; тесты подставляют тестовый ключ векторов. */
+    private val linkKeys: List<String> = JetBoxLinkSignature.PUBLIC_KEYS,
 ) {
     sealed class Step {
         /** Экрана нет, приложение живёт обычной жизнью. */
@@ -131,10 +136,21 @@ class JetBoxOnboarding(
 
     // region Вход по ссылке
 
-    /** Точка входа из интента. `true` — ссылка наша и обработана, `false` — не наша. */
-    fun handle(url: String): Boolean {
-        when (val outcome = JetBoxLink.parse(url)) {
+    /**
+     * Точка входа из интента или из входа по рабочей почте. `true` — ссылка наша и обработана, `false` — не наша.
+     * [trusted] — ссылка из ответа `login/verify` (TLS, наш Кабинет): подпись JetBox safety не нужна, как в iOS.
+     */
+    fun handle(url: String, trusted: Boolean = false): Boolean {
+        when (val outcome = JetBoxLink.parse(url, signed = signedLinks, trusted = trusted, signatureKeys = linkKeys)) {
             JetBoxLink.Outcome.NotOurs -> return false
+
+            // JetBox safety: подписи нет или она не наша — ни вопроса, ни регистрации, подключение не трогаем.
+            JetBoxLink.Outcome.Unsigned -> {
+                log("JetBox: у ссылки нет верной подписи, в сеть не идём")
+                cancelFlow()
+                _step.value = Step.Failed(JetBoxFailure.NotFromJetBox)
+                return true
+            }
 
             JetBoxLink.Outcome.Broken -> {
                 log("JetBox: ссылка не проходит проверку формата, в сеть не идём")
@@ -289,7 +305,9 @@ class JetBoxOnboarding(
                 val problem = returnPrevious(swap, "сценарий прерван")
                     ?: RESTORE_INCOMPLETE.takeIf { engine.hasUnfinishedSwap() }
                 val shown = (_step.value as? Step.Failed)?.failure
-                if (problem != null && (shown == JetBoxFailure.ForeignServer || shown == JetBoxFailure.BrokenLink)) {
+                if (problem != null && (shown == JetBoxFailure.ForeignServer || shown == JetBoxFailure.BrokenLink ||
+                        shown == JetBoxFailure.NotFromJetBox)
+                ) {
                     // Повтор доделал бы прерванную замену — его нет (ни кнопки, ни прежней ссылки).
                     lastPayload = null
                     _step.value = Step.Failed(JetBoxFailure.Other(problem, retryable = false))

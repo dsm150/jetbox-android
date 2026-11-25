@@ -23,6 +23,13 @@ object JetBoxConfig {
      */
     const val APP_API_BASE = "https://box.jet-net.net/api/app/v1"
 
+    /**
+     * JetBox safety (слово владельца 25.11.2026, как iOS): приложение принимает только ссылки с верной подписью `s`
+     * ([JetBoxLinkSignature]) — с любым хостом и любым сервером `m`; имя и место сервера не важны. `false` — прежние
+     * правила (свой хост, маска [MANAGEMENT_SUFFIX], без подписи) — только для тестов логики сценария.
+     */
+    const val LINK_SIGNED = true
+
     const val PRIVACY_POLICY_URL = "https://jet-net.net/privacy"
     const val SITE_URL = "https://jet-net.net"
 

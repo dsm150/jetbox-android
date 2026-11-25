@@ -60,7 +60,8 @@ sealed class LoginVerifyResult {
 /**
  * Ссылка подключения из ответа `login/verify`: `connect_url`, если Кабинет его прислал, иначе — собранная
  * из полей (`k`, `m`, `e`, `n`) ссылка того же вида, что даёт Кабинет. `null` — ключа нет ни там, ни там.
- * Проверку (формат ключа, маска management `*.jet-net.net`) делает дальше `JetBoxLink.parse` — общий путь со ссылкой.
+ * Проверку (формат ключа, адрес сервера) делает дальше `JetBoxLink.parse` — общий путь со ссылкой; подпись для
+ * ответа verify не нужна (`handle(..., trusted = true)`).
  */
 internal fun connectUrlFrom(json: JSONObject): String? {
     json.optString("connect_url").trim().takeIf { it.isNotEmpty() }?.let { return it }

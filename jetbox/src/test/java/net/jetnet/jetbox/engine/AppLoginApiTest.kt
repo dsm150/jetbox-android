@@ -147,7 +147,7 @@ class AppLoginApiTest {
                 .put("exit_node", "sv-fabrika-exit")
                 .put("site_name", "Fabrika & Co + 1"),
         )!!
-        val p = (JetBoxLink.parse(url) as JetBoxLink.Outcome.Payload).payload
+        val p = (JetBoxLink.parse(url, signed = false) as JetBoxLink.Outcome.Payload).payload
         assertEquals(key, p.setupKey)
         assertEquals("https://netbird.jet-net.net", p.managementURL)
         assertEquals("sv-fabrika-exit", p.exitNodeName)

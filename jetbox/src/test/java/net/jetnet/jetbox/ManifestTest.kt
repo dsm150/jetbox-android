@@ -74,7 +74,8 @@ class ManifestTest {
 
     @Test fun jetBoxActivityTakesCustomScheme() {
         val f = filters(activity(jetbox, "JetBoxActivity")).single { it.contains("android:scheme=\"jetbox\"") }
-        assertTrue(f.contains("android:host=\"connect\""))
+        // JetBox safety: своя схема с любым хостом — подлинность ссылки решает подпись.
+        assertFalse(f.contains("android:host="))
         assertTrue(f.contains("android.intent.action.VIEW"))
         assertTrue(f.contains("android.intent.category.BROWSABLE"))
     }

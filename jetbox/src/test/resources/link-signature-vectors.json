@@ -1,0 +1,54 @@
+{
+  "about": "JetBox safety v1 — test vectors. TEST key only (private = bytes 0x00..0x1f); never the production key.",
+  "format": "s = base64url(no padding) Ed25519 over b'JetBox safety v1\\n' + 'name=value\\n' for every fragment param except s, sorted by name (UTF-8 bytes), values percent-decoded",
+  "test_public_key_b64": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+  "cases": [
+    {
+      "name": "full, https",
+      "link": "https://api.jetbox.example/connect#k=4E2BD0D4-0000-4000-8000-000000000001&m=https%3A%2F%2Fnet.jetbox.example&e=sv-demo-exit&n=Caf%C3%A9%20Home%2B1&b=100.64.0.7&s=XY_KvXXY0YNGAxTwvJ_htjoL8Cm21W32NSuBWtG_CydTZeRFNku3RjxtLw7Todmn0WcstEA1Wjru0b24cCP3AA",
+      "valid": true,
+      "message_b64": "SmV0Qm94IHNhZmV0eSB2MQpiPTEwMC42NC4wLjcKZT1zdi1kZW1vLWV4aXQKaz00RTJCRDBENC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEKbT1odHRwczovL25ldC5qZXRib3guZXhhbXBsZQpuPUNhZsOpIEhvbWUrMQo="
+    },
+    {
+      "name": "same fragment via jetbox://",
+      "link": "jetbox://connect#k=4E2BD0D4-0000-4000-8000-000000000001&m=https%3A%2F%2Fnet.jetbox.example&e=sv-demo-exit&n=Caf%C3%A9%20Home%2B1&b=100.64.0.7&s=XY_KvXXY0YNGAxTwvJ_htjoL8Cm21W32NSuBWtG_CydTZeRFNku3RjxtLw7Todmn0WcstEA1Wjru0b24cCP3AA",
+      "valid": true
+    },
+    {
+      "name": "any host, any server, signed",
+      "link": "https://setup.anywhere.example/connect#k=4E2BD0D4-0000-4000-8000-000000000002&m=https%3A%2F%2Fmgmt.other-server.example%3A33073&e=sv-x-exit&n=Lakeview%20Home&s=mt-qpzzT_5f_IsHNAG_1qWVxqGn_0FxVqFi6lmYHeby5P22hYuTl8jD5bH7__jg_YvewiJCeW72HAToP5aPBDg",
+      "valid": true,
+      "message_b64": "SmV0Qm94IHNhZmV0eSB2MQplPXN2LXgtZXhpdAprPTRFMkJEMEQ0LTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMgptPWh0dHBzOi8vbWdtdC5vdGhlci1zZXJ2ZXIuZXhhbXBsZTozMzA3MwpuPUxha2V2aWV3IEhvbWUK"
+    },
+    {
+      "name": "server replaced after signing",
+      "link": "https://api.jetbox.example/connect#k=4E2BD0D4-0000-4000-8000-000000000001&m=https%3A%2F%2Fevil.example&e=sv-demo-exit&n=Caf%C3%A9%20Home%2B1&b=100.64.0.7&s=XY_KvXXY0YNGAxTwvJ_htjoL8Cm21W32NSuBWtG_CydTZeRFNku3RjxtLw7Todmn0WcstEA1Wjru0b24cCP3AA",
+      "valid": false
+    },
+    {
+      "name": "box ip replaced",
+      "link": "https://api.jetbox.example/connect#k=4E2BD0D4-0000-4000-8000-000000000001&m=https%3A%2F%2Fnet.jetbox.example&e=sv-demo-exit&n=Caf%C3%A9%20Home%2B1&b=100.64.0.9&s=XY_KvXXY0YNGAxTwvJ_htjoL8Cm21W32NSuBWtG_CydTZeRFNku3RjxtLw7Todmn0WcstEA1Wjru0b24cCP3AA",
+      "valid": false
+    },
+    {
+      "name": "param appended after signing",
+      "link": "https://api.jetbox.example/connect#k=4E2BD0D4-0000-4000-8000-000000000001&m=https%3A%2F%2Fnet.jetbox.example&e=sv-demo-exit&n=Caf%C3%A9%20Home%2B1&b=100.64.0.7&s=XY_KvXXY0YNGAxTwvJ_htjoL8Cm21W32NSuBWtG_CydTZeRFNku3RjxtLw7Todmn0WcstEA1Wjru0b24cCP3AA&x=0",
+      "valid": false
+    },
+    {
+      "name": "signed by unknown key",
+      "link": "https://api.jetbox.example/connect#k=4E2BD0D4-0000-4000-8000-000000000001&m=https%3A%2F%2Fnet.jetbox.example&e=sv-demo-exit&s=tkS4D_FtOePBgVbfJ_tPmzFx-IaEXPiTYxnCGRAIIV2jb5M4vRm46LMD3cNjikRfIGK0nsMD3j_ODonFzJ8qBQ",
+      "valid": false
+    },
+    {
+      "name": "no signature",
+      "link": "https://api.jetbox.example/connect#k=4E2BD0D4-0000-4000-8000-000000000001&m=https%3A%2F%2Fnet.jetbox.example&e=sv-demo-exit",
+      "valid": false
+    },
+    {
+      "name": "duplicate s",
+      "link": "https://api.jetbox.example/connect#k=4E2BD0D4-0000-4000-8000-000000000001&m=https%3A%2F%2Fnet.jetbox.example&e=sv-demo-exit&n=Caf%C3%A9%20Home%2B1&b=100.64.0.7&s=XY_KvXXY0YNGAxTwvJ_htjoL8Cm21W32NSuBWtG_CydTZeRFNku3RjxtLw7Todmn0WcstEA1Wjru0b24cCP3AA&s=AAAA",
+      "valid": false
+    }
+  ]
+}

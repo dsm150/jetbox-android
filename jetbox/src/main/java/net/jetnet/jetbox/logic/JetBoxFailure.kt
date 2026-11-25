@@ -10,6 +10,9 @@ sealed class JetBoxFailure {
 
     /** Адрес management в ссылке вне маски `*.jet-net.net` (решение владельца 18.11.2026). */
     data object ForeignServer : JetBoxFailure() { override val details: String? = null }
+
+    /** JetBox safety: у ссылки нет верной подписи `s` — «Эта ссылка не от JetBox». */
+    data object NotFromJetBox : JetBoxFailure() { override val details: String? = null }
     data object Offline : JetBoxFailure() { override val details: String? = null }
     data class ManagementUnreachable(override val details: String?) : JetBoxFailure()
     data class KeyRejected(override val details: String?) : JetBoxFailure()
@@ -27,7 +30,7 @@ sealed class JetBoxFailure {
     abstract val details: String?
 
     /** Повтор имеет смысл не всегда: испорченную или чужую ссылку повторять нечем. */
-    val canRetry: Boolean get() = this !is BrokenLink && this !is ForeignServer && (this as? Other)?.retryable != false
+    val canRetry: Boolean get() = this !is BrokenLink && this !is ForeignServer && this !is NotFromJetBox && (this as? Other)?.retryable != false
 
     companion object {
         private val CERT_MARKERS = listOf("x509", "certificate")

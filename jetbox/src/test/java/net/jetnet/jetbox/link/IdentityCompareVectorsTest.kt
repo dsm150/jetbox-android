@@ -42,7 +42,7 @@ class IdentityCompareVectorsTest(
 
     @Test fun compareVector() {
         assertTrue(about, expect == "same" || expect == "ask")
-        val r = JetBoxLink.parse(link)
+        val r = JetBoxLink.parse(link, signed = false)
         assertTrue("$about: ожидали payload, получили $r", r is JetBoxLink.Outcome.Payload)
         val p = (r as JetBoxLink.Outcome.Payload).payload
         val e = stored.field("e")

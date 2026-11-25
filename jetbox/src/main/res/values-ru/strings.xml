@@ -30,6 +30,9 @@
     <string name="jb_err_broken_body">Эта ссылка не подходит для подключения. Запросите новую ссылку у поддержки JetBox.</string>
     <!-- Адрес management в ссылке вне маски *.jet-net.net (решение владельца 18.11.2026). -->
     <string name="jb_err_foreign_title">Ссылка ведёт не на сервер JetBox</string>
+    <!-- JetBox safety: ссылка без верной подписи, как iOS. -->
+    <string name="jb_err_unsigned_title">Эта ссылка не от JetBox</string>
+    <string name="jb_err_unsigned_body">Мы не подключались, текущее подключение не тронуто. Используйте только ссылки из Личного кабинета JetBox или от поддержки.</string>
     <string name="jb_err_foreign_body">Подключение не изменено. Возьмите ссылку подключения в Личном кабинете JetBox.</string>
     <string name="jb_err_offline_title">Нет интернета</string>
     <string name="jb_err_offline_body">Подключитесь к Wi-Fi или мобильной сети и попробуйте снова.</string>

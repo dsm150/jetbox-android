@@ -22,7 +22,7 @@ class JetBoxIdentityTest {
         t: String? = null,
     ): JetBoxLinkPayload =
         (JetBoxLink.parse(
-            "jetbox://connect#k=$k&m=$m" + (e?.let { "&e=$it" } ?: "") + (n?.let { "&n=$it" } ?: "") + (t?.let { "&t=$it" } ?: "")
+            "jetbox://connect#k=$k&m=$m" + (e?.let { "&e=$it" } ?: "") + (n?.let { "&n=$it" } ?: "") + (t?.let { "&t=$it" } ?: ""), signed = false
         ) as JetBoxLink.Outcome.Payload).payload
 
     private fun box(
@@ -74,10 +74,10 @@ class JetBoxIdentityTest {
      */
     @Test fun legacyRecordAndCloudLinkIsFresh() {
         val legacy = JetBoxBox("https://netbird.jet-net.net", null, null, "Тариф", 1L)
-        val cloud = (JetBoxLink.parse("jetbox://connect#k=$keyA&m=https://netbird.jet-net.net&n=Тариф&t=tok")
+        val cloud = (JetBoxLink.parse("jetbox://connect#k=$keyA&m=https://netbird.jet-net.net&n=Тариф&t=tok", signed = false)
             as JetBoxLink.Outcome.Payload).payload
         assertEquals(Plan.FRESH, JetBoxIdentity.plan(legacy, cloud, configExists = true))
-        val other = (JetBoxLink.parse("jetbox://connect#k=$keyB&m=https://netbird.jet-net.net&n=Тариф&t=tok2")
+        val other = (JetBoxLink.parse("jetbox://connect#k=$keyB&m=https://netbird.jet-net.net&n=Тариф&t=tok2", signed = false)
             as JetBoxLink.Outcome.Payload).payload
         assertEquals(Plan.FRESH, JetBoxIdentity.plan(legacy, other, configExists = true))
     }

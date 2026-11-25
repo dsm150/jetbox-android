@@ -16,7 +16,7 @@ import org.junit.Test
 class JetBoxLinkTest {
     private val key = "11111111-2222-4333-8444-555555555555"
 
-    private fun parse(s: String) = JetBoxLink.parse(s)
+    private fun parse(s: String) = JetBoxLink.parse(s, signed = false)
 
     private fun payload(s: String): JetBoxLinkPayload {
         val r = parse(s)
@@ -268,7 +268,7 @@ class JetBoxLinkTest {
     @Test fun keyNeverLeaksThroughToString() {
         val link = "jetbox://connect#k=$key&m=https://mgmt.jet-net.net&e=node"
         assertFalse(payload(link).toString().contains(key))
-        assertFalse(JetBoxLink.parse(link).toString().contains(key))
+        assertFalse(JetBoxLink.parse(link, signed = false).toString().contains(key))
     }
 
     @Test fun maskedKeyShowsLastFour() {

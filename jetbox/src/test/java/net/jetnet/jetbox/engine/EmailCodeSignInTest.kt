@@ -20,8 +20,8 @@ import org.junit.Test
 
 /**
  * Код из письма → ответ verify RU-Кабинета → тот же путь, что у ссылки из Кабинета: «Ваш JetBox» и одна кнопка
- * (RU-сценарий не меняется). Ответ — по контракту 06-cabinet.md §2а; ссылка подписана (`s`), с `p` и `b` —
- * RU-приложение неизвестные параметры пропускает.
+ * (RU-сценарий не меняется). Ответ — по контракту 06-cabinet.md §2а. Ссылка из verify — доверенная: подпись `s`
+ * не проверяется (её может и не быть), `p` и `b` RU-приложение пропускает.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class EmailCodeSignInTest {
@@ -35,7 +35,8 @@ class EmailCodeSignInTest {
         val api = FakeLoginApi()
         private val main = CoroutineScope(StandardTestDispatcher(scope.testScheduler) + SupervisorJob())
         val ob = JetBoxOnboarding(engine, store, main, log = {}, clock = { 7_000L })
-        val form = EmailLoginForm(api, main, clock = { 0L }, onConnectUrl = { ob.handle(it) })
+        // Как в приложении: ссылка из ответа verify — доверенная, подпись JetBox safety не нужна.
+        val form = EmailLoginForm(api, main, clock = { 0L }, onConnectUrl = { ob.handle(it, trusted = true) })
         init {
             engine.storedFingerprint = { store.currentBox?.setupKeyFingerprint }
             engine.onStart = {
@@ -92,11 +93,20 @@ class EmailCodeSignInTest {
         assertEquals("sv-fabrika-exit", ready.payload.exitNodeName)
     }
 
-    /** Сервер вне маски *.jet-net.net — отказ сценария «не на сервер JetBox», в сеть не идём. */
-    @Test fun foreignManagementRefused() = runTest {
+    /** JetBox safety (слово владельца 25.11): имя и место сервера не важны — ответ verify с любым `m` и без `s` принят. */
+    @Test fun anyServerFromVerifyAccepted() = runTest {
         val env = Env(this)
-        signIn(env, "https://box.jet-net.net/connect#k=$key&m=https%3A%2F%2Fevil.example.com")
-        assertEquals(Step.Failed(JetBoxFailure.ForeignServer), env.ob.step.value)
+        signIn(env, "https://box.jet-net.net/connect#k=$key&m=https%3A%2F%2Fmgmt.other.example%3A33073&e=x-exit&n=Office")
+        val ready = env.ob.step.value as Step.Ready
+        assertEquals("https://mgmt.other.example:33073", ready.payload.managementURL)
+    }
+
+    /** Та же неподписанная ссылка извне (интент) — отказ «Эта ссылка не от JetBox» до любого действия. */
+    @Test fun sameUnsignedLinkFromIntentRefused() = runTest {
+        val env = Env(this)
+        assertEquals(true, env.ob.handle("https://box.jet-net.net/connect#k=$key&m=https%3A%2F%2Fnetbird.jet-net.net"))
+        assertEquals(Step.Failed(JetBoxFailure.NotFromJetBox), env.ob.step.value)
+        advanceUntilIdle()
         assertEquals(0, env.engine.registerCalls)
     }
 }

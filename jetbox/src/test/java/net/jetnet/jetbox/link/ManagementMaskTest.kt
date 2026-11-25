@@ -59,7 +59,7 @@ class ManagementMaskTest {
         )
         val failed = mutableListOf<String>()
         for (c in cases) {
-            val r = JetBoxLink.parse(linkWith(c.m))
+            val r = JetBoxLink.parse(linkWith(c.m), signed = false)
             val expectedUrl = byContract[c.m]
             val good = when {
                 expectedUrl != null -> r == JetBoxLink.Outcome.Payload(
@@ -80,7 +80,7 @@ class ManagementMaskTest {
     }
 
     @Test fun normalisationKeepsFormat() {
-        fun url(m: String) = (JetBoxLink.parse(linkWith(m)) as JetBoxLink.Outcome.Payload).payload.managementURL
+        fun url(m: String) = (JetBoxLink.parse(linkWith(m), signed = false) as JetBoxLink.Outcome.Payload).payload.managementURL
         assertEquals("https://netbird.jet-net.net", url("https://NETBIRD.Jet-Net.NET/"))
         assertEquals("https://netbird.jet-net.net:443", url("https://netbird.jet-net.net:443"))
         assertEquals("https://netbird.jet-net.net:443", url("https://netbird.jet-net.net:0443"))
@@ -94,7 +94,7 @@ class ManagementMaskTest {
      */
     @Test fun trailingDotIsStrippedBeforeMaskAndIdentity() {
         fun parse(m: String, tail: String = "&e=sv-acme-exit&n=Office") =
-            JetBoxLink.parse("jetbox://connect#k=$key&m=" + m.replace(":", "%3A").replace("/", "%2F") + tail)
+            JetBoxLink.parse("jetbox://connect#k=$key&m=" + m.replace(":", "%3A").replace("/", "%2F") + tail, signed = false)
         val plain = (parse("https://netbird.jet-net.net") as JetBoxLink.Outcome.Payload).payload
         for (m in listOf("https://netbird.jet-net.net.", "https://NETBIRD.jet-net.net./")) {
             assertTrue(m, JetBoxLink.isAllowedManagement(m))
@@ -140,7 +140,7 @@ class ManagementMaskTest {
             "\u0130https://netbird.jet-net.net", "http://netbird.jet-net.net", "httpss://netbird.jet-net.net",
         )) {
             assertFalse(m, JetBoxLink.isAllowedManagement(m))
-            assertEquals(m, JetBoxLink.Outcome.ForeignServer, JetBoxLink.parse(linkWith(m)))
+            assertEquals(m, JetBoxLink.Outcome.ForeignServer, JetBoxLink.parse(linkWith(m), signed = false))
         }
         assertTrue(JetBoxLink.isAllowedManagement("HTTPS://netbird.jet-net.net"))
         assertTrue(JetBoxLink.isAllowedManagement("HtTpS://netbird.jet-net.net"))
@@ -149,7 +149,7 @@ class ManagementMaskTest {
     @Test fun universalLinkWithForeignServer() {
         assertEquals(
             JetBoxLink.Outcome.ForeignServer,
-            JetBoxLink.parse("https://box.jet-net.net/connect#k=$key&m=https%3A%2F%2Fevil.com&e=x"),
+            JetBoxLink.parse("https://box.jet-net.net/connect#k=$key&m=https%3A%2F%2Fevil.com&e=x", signed = false),
         )
     }
 }

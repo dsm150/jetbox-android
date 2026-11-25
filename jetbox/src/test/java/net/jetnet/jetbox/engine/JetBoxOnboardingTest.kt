@@ -54,7 +54,7 @@ class JetBoxOnboardingTest {
     }
 
     private fun payload(s: String): JetBoxLinkPayload =
-        (JetBoxLink.parse(s) as JetBoxLink.Outcome.Payload).payload
+        (JetBoxLink.parse(s, signed = false) as JetBoxLink.Outcome.Payload).payload
 
     private class Env(scope: TestScope) {
         val engine = FakeEngine()
@@ -71,6 +71,8 @@ class JetBoxOnboardingTest {
             engine, store, CoroutineScope(StandardTestDispatcher(scope.testScheduler) + SupervisorJob()),
             log = { logs += it },
             clock = { 7_000L },
+            // Логика сценария — на прежних правилах ссылки; JetBox safety — SignedLinkOnboardingTest.
+            signedLinks = false,
         )
 
         /** Туннель поднимается сразу после start, маршруты приходят вместе с ним. */

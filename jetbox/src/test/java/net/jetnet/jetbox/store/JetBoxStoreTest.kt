@@ -19,7 +19,7 @@ class JetBoxStoreTest {
     private val key = "11111111-2222-4333-8444-555555555555"
 
     private fun payload(s: String): JetBoxLinkPayload {
-        val r = JetBoxLink.parse(s)
+        val r = JetBoxLink.parse(s, signed = false)
         assertTrue("ожидали payload, получили $r", r is JetBoxLink.Outcome.Payload)
         return (r as JetBoxLink.Outcome.Payload).payload
     }

@@ -53,6 +53,8 @@ dependencies {
     // Theme.Material3.DayNight.NoActionBar — родитель темы окна (библиотека уже есть у :app).
     implementation(libs.material)
     implementation(libs.coroutines.android)
+    // JetBox safety: Ed25519 для подписи ссылки. Только проверка, шифрования нет.
+    implementation(libs.bouncycastle.prov)
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)
     testImplementation(libs.json)

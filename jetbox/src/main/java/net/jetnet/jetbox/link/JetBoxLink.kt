@@ -142,25 +142,48 @@ object JetBoxLink {
 
         /** Не наша ссылка — отдаём дальше по цепочке обработчиков. */
         data object NotOurs : Outcome()
+
+        /**
+         * JetBox safety: нет подписи `s`, она неверна или в ссылке повтор параметра ([JetBoxLinkSignature]).
+         * Отказ до любого действия: в сеть не идём, подключение не трогаем.
+         */
+        data object Unsigned : Outcome()
     }
 
     private val UUID_REGEX =
         Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
-    fun parse(url: String): Outcome {
-        if (!isJetBoxUrl(url)) return Outcome.NotOurs
+    /**
+     * [signed] — правила JetBox safety ([JetBoxConfig.LINK_SIGNED], как iOS): любой хост и любой сервер `m`, но только
+     * с верной подписью; `false` — прежние правила (свой хост, маска `*.jet-net.net`). [trusted] — ссылка из ответа
+     * `login/verify` (TLS, наш Кабинет): подпись не нужна. [signatureKeys] — для тестов (тест-векторы на тестовом ключе).
+     */
+    fun parse(
+        url: String,
+        signed: Boolean = JetBoxConfig.LINK_SIGNED,
+        trusted: Boolean = false,
+        signatureKeys: List<String> = JetBoxLinkSignature.PUBLIC_KEYS,
+    ): Outcome {
+        if (!isJetBoxUrl(url, signed)) return Outcome.NotOurs
 
         // Фрагмент берём СЫРЫМ (URI.getFragment() декодирует — повторное декодирование съело бы %2520).
         val hash = url.indexOf('#')
         if (hash < 0 || hash == url.length - 1) return Outcome.NotOurs
-        val params = parameters(url.substring(hash + 1))
+        val fragment = url.substring(hash + 1)
+        val params = parameters(fragment)
 
         // Без ключа это не ссылка подключения: не пугаем клиента ошибкой.
         val key = params["k"]?.takeIf { it.isNotEmpty() } ?: return Outcome.NotOurs
+        // JetBox safety (как iOS 25): до проверки ключа и сервера — подпись всего фрагмента.
+        if (signed && !trusted && !JetBoxLinkSignature.isValid(fragment, signatureKeys)) return Outcome.Unsigned
         if (!isValidSetupKey(key)) return Outcome.Broken
-        // Эталон (JetBox_Desktop core/jetboxlink, AllowedManagement) «битый» m от «чужого» не отличает:
-        // всё, что вне маски, — чужой сервер.
-        val management = normalizedManagement(params["m"]) ?: return Outcome.ForeignServer
+        // Подписанная (или доверенная) ссылка — любой сервер; негодный по формату адрес — битая ссылка. Прежние правила:
+        // эталон (JetBox_Desktop core/jetboxlink, AllowedManagement) «битый» m от «чужого» не отличает — чужой сервер.
+        val management = if (signed) {
+            openManagement(params["m"]) ?: return Outcome.Broken
+        } else {
+            normalizedManagement(params["m"]) ?: return Outcome.ForeignServer
+        }
 
         return Outcome.Payload(
             JetBoxLinkPayload(
@@ -174,13 +197,17 @@ object JetBoxLink {
         )
     }
 
-    /** Универсальная ссылка Кабинета либо своя схема. */
-    fun isJetBoxUrl(url: String): Boolean {
+    /**
+     * Универсальная ссылка Кабинета либо своя схема. [signed] (JetBox safety) — без фильтра хоста: своя схема с любым
+     * хостом, https и http с любого хоста и пути; ссылкой подключения её делает подписанный фрагмент с ключом.
+     */
+    fun isJetBoxUrl(url: String, signed: Boolean = JetBoxConfig.LINK_SIGNED): Boolean {
         // Фрагмент и query отрезаем до разбора: хвосты мессенджеров в query (`?utm=a|b c`)
         // не должны делать нашу ссылку «чужой».
         val uri = runCatching { URI(url.substringBefore('#').substringBefore('?')) }.getOrNull() ?: return false
         val scheme = uri.scheme?.lowercase(Locale.ROOT)
 
+        if (signed) return scheme == JetBoxConfig.CUSTOM_SCHEME || scheme == "https" || scheme == "http"
         if (scheme == JetBoxConfig.CUSTOM_SCHEME) {
             return uri.host?.lowercase(Locale.ROOT) == "connect"
         }
@@ -216,7 +243,7 @@ object JetBoxLink {
      * Percent-decoding без превращения «+» в пробел: `%XX` -> байты, затем СТРОГИЙ UTF-8.
      * Битый `%` или невалидный UTF-8 — возвращаем исходную строку (как iOS `removingPercentEncoding ?? raw`).
      */
-    private fun percentDecode(raw: String): String {
+    internal fun percentDecode(raw: String): String {
         if (raw.indexOf('%') < 0) return raw
         val bytes = ByteArrayOutputStream(raw.length)
         var i = 0
@@ -321,6 +348,23 @@ object JetBoxLink {
      * Пусто/нет параметра — дефолт приложения; иначе только адрес внутри маски [isAllowedManagement]
      * (`null` — вне маски). Формат прежний: `https://хост[:порт]` без хвостового слэша и без завершающей точки хоста.
      */
+    /**
+     * JetBox safety: адрес management без маски — любой хост (имя, IPv4, IPv6 в `[]`), https или http, порт и путь по
+     * желанию. Отсекается только то, что адресом сервера не является: другая схема, пустой хост, логин в адресе, query и
+     * фрагмент. Пусто/нет параметра — сервер по умолчанию. Схема и хост — в нижнем регистре, без завершающей точки хоста
+     * и хвостового «/».
+     */
+    private fun openManagement(value: String?): String? {
+        if (value.isNullOrEmpty()) return JetBoxConfig.DEFAULT_MANAGEMENT_URL
+        val uri = runCatching { URI(value.trim()) }.getOrNull() ?: return null
+        val scheme = uri.scheme?.lowercase(Locale.ROOT)?.takeIf { it == "https" || it == "http" } ?: return null
+        if (uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null) return null
+        val host = uri.host?.lowercase(Locale.ROOT)?.removeSuffix(".")?.takeIf { it.isNotEmpty() } ?: return null
+        val port = if (uri.port == -1) "" else if (uri.port in 1..65535) ":${uri.port}" else return null
+        val path = (uri.rawPath ?: "").trimEnd('/')
+        return "$scheme://$host$port$path"
+    }
+
     private fun normalizedManagement(value: String?): String? {
         if (value.isNullOrEmpty()) return JetBoxConfig.DEFAULT_MANAGEMENT_URL
         val address = managementAddress(value) ?: return null

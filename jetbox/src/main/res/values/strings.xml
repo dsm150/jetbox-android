@@ -30,6 +30,9 @@
     <string name="jb_err_broken_body">This link cannot be used to connect. Ask JetBox support for a new one.</string>
     <!-- Адрес management в ссылке вне маски *.jet-net.net (решение владельца 18.11.2026). -->
     <string name="jb_err_foreign_title">This link doesn’t lead to a JetBox server</string>
+    <!-- JetBox safety: a link without a valid signature, as on iOS. -->
+    <string name="jb_err_unsigned_title">This link isn’t from JetBox</string>
+    <string name="jb_err_unsigned_body">We didn’t connect, and your current connection wasn’t changed. Only use links from your JetBox account or JetBox support.</string>
     <string name="jb_err_foreign_body">Your connection was not changed. Get a connection link in your JetBox account.</string>
     <string name="jb_err_offline_title">No internet</string>
     <string name="jb_err_offline_body">Connect to Wi-Fi or mobile data and try again.</string>

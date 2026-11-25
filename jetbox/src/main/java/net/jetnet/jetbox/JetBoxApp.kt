@@ -96,7 +96,8 @@ object JetBoxProcess {
             emailLogin ?: EmailLoginForm(
                 api = loginApi,
                 scope = MainScope(),
-                onConnectUrl = { url -> onboarding(app).handle(url) },
+                // Ссылка из ответа verify (TLS, наш Кабинет) — доверенная: подпись JetBox safety не нужна, как в iOS.
+                onConnectUrl = { url -> onboarding(app).handle(url, trusted = true) },
             ).also { emailLogin = it }
         }
 

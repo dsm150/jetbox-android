@@ -411,6 +411,7 @@ private val JetBoxFailure.titleRes: Int
     get() = when (this) {
         JetBoxFailure.BrokenLink -> R.string.jb_err_broken_title
         JetBoxFailure.ForeignServer -> R.string.jb_err_foreign_title
+        JetBoxFailure.NotFromJetBox -> R.string.jb_err_unsigned_title
         JetBoxFailure.Offline -> R.string.jb_err_offline_title
         is JetBoxFailure.ManagementUnreachable -> R.string.jb_err_unreachable_title
         is JetBoxFailure.KeyRejected -> R.string.jb_err_key_title
@@ -424,6 +425,7 @@ private val JetBoxFailure.messageRes: Int
     get() = when (this) {
         JetBoxFailure.BrokenLink -> R.string.jb_err_broken_body
         JetBoxFailure.ForeignServer -> R.string.jb_err_foreign_body
+        JetBoxFailure.NotFromJetBox -> R.string.jb_err_unsigned_body
         JetBoxFailure.Offline -> R.string.jb_err_offline_body
         is JetBoxFailure.ManagementUnreachable -> R.string.jb_err_unreachable_body
         is JetBoxFailure.KeyRejected -> R.string.jb_err_key_body
@@ -589,6 +591,7 @@ internal val PreviewFlowSteps: Map<String, Step> = linkedMapOf(
     ),
     "FAILED_BROKEN" to Step.Failed(JetBoxFailure.BrokenLink),
     "FAILED_FOREIGN" to Step.Failed(JetBoxFailure.ForeignServer),
+    "FAILED_UNSIGNED" to Step.Failed(JetBoxFailure.NotFromJetBox),
     "FAILED_VPN" to Step.Failed(JetBoxFailure.VpnPermissionDenied),
 )
 
