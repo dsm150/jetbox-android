@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package net.jetnet.jetbox.ui
 
 import android.app.Activity
@@ -27,6 +29,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -228,18 +232,21 @@ fun JetBoxHomeLayout(
 
             Spacer(Modifier.weight(1f).heightIn(min = 12.dp))
 
-            JetBoxShield(
-                phase = phase,
-                label = shieldLabel,
-                onClick = if (ui.power == PowerAction.NONE) null else onPower,
-            )
-            Spacer(Modifier.height(26.dp))
-            Text(
-                statusText,
-                style = JBType.title2.copy(fontWeight = FontWeight.SemiBold),
-                color = statusColor,
-                textAlign = TextAlign.Center,
-            )
+            // Вход по рабочей почте: пока набирают адрес или код, щит со статусом уступает место форме над клавиатурой.
+            if (ui.hasBox || !WindowInsets.isImeVisible) {
+                JetBoxShield(
+                    phase = phase,
+                    label = shieldLabel,
+                    onClick = if (ui.power == PowerAction.NONE) null else onPower,
+                )
+                Spacer(Modifier.height(26.dp))
+                Text(
+                    statusText,
+                    style = JBType.title2.copy(fontWeight = FontWeight.SemiBold),
+                    color = statusColor,
+                    textAlign = TextAlign.Center,
+                )
+            }
 
             Spacer(Modifier.weight(1f).heightIn(min = 24.dp))
 
@@ -259,7 +266,9 @@ fun JetBoxHomeLayout(
                 if (ui.hasBox) {
                     JetBoxHomeDock(ui, nowMillis, onOpen = onOpenDetails)
                 } else {
-                    JetBoxNoBoxDock()
+                    // Вход по рабочей почте с кодом на месте «JetBox не подключён»; ссылка из Кабинета работает, как раньше.
+                    val emailLogin = rememberEmailLogin()
+                    if (emailLogin != null) JetBoxEmailLoginDock(emailLogin) else JetBoxNoBoxDock()
                 }
             }
         }

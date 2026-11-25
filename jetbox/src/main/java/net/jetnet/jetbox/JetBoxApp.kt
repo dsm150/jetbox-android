@@ -1,6 +1,7 @@
 package net.jetnet.jetbox
 
 import android.content.Context
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.animation.AnimatedContent
@@ -14,6 +15,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +30,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.MainScope
 import net.jetnet.jetbox.engine.AndroidEngine
+import net.jetnet.jetbox.engine.AppLoginApi
+import net.jetnet.jetbox.engine.EmailLoginForm
+import net.jetnet.jetbox.engine.HttpAppLoginApi
 import net.jetnet.jetbox.engine.EngineApi
 import net.jetnet.jetbox.engine.JetBoxEngine
 import net.jetnet.jetbox.engine.JetBoxOnboarding
@@ -44,6 +49,7 @@ import net.jetnet.jetbox.ui.JetBoxFlowActions
 import net.jetnet.jetbox.ui.JetBoxFlowScreen
 import net.jetnet.jetbox.ui.JetBoxHomeScreen
 import net.jetnet.jetbox.ui.JetBoxSettingsScreen
+import net.jetnet.jetbox.ui.LocalEmailLogin
 import net.jetnet.jetbox.ui.homeViewModelFactory
 import net.jetnet.jetbox.ui.rememberUrlOpener
 import net.jetnet.jetbox.widget.JetBoxWidget
@@ -59,6 +65,40 @@ object JetBoxProcess {
 
     @Volatile private var onboarding: JetBoxOnboarding? = null
     @Volatile private var updates: UpdateChecker? = null
+    @Volatile private var emailLogin: EmailLoginForm? = null
+
+    /** API входа по рабочей почте в Кабинете — без состояния, один на процесс. */
+    private val loginApi: AppLoginApi by lazy {
+        HttpAppLoginApi(
+            userAgent = "JetBox-Android/${BuildConfig.APP_VERSION_NAME}",
+            deviceName = ::deviceName,
+        )
+    }
+
+    /** Имя телефона для списка устройств в Кабинете: «Google Pixel 8», без повтора производителя. */
+    private fun deviceName(): String {
+        val maker = Build.MANUFACTURER.orEmpty().trim().replaceFirstChar { it.uppercase() }
+        val model = Build.MODEL.orEmpty().trim()
+        return when {
+            model.isEmpty() -> maker.ifEmpty { "Android" }
+            maker.isEmpty() || model.startsWith(maker, ignoreCase = true) -> model
+            else -> "$maker $model"
+        }
+    }
+
+    /**
+     * Форма «Вход по рабочей почте» — одна на процесс. Вызывать с главного потока. Код из письма принят — ссылка
+     * подключения уходит в сценарий, как ссылка `/connect` из интента (дальше «Ваш JetBox» и одна кнопка).
+     */
+    fun emailLogin(context: Context): EmailLoginForm =
+        emailLogin ?: synchronized(this) {
+            val app = context.applicationContext ?: context
+            emailLogin ?: EmailLoginForm(
+                api = loginApi,
+                scope = MainScope(),
+                onConnectUrl = { url -> onboarding(app).handle(url) },
+            ).also { emailLogin = it }
+        }
 
     /** Настройки JetBox (`JetBoxStore.PREFS_NAME`). */
     fun prefs(context: Context): KeyValueStore =
@@ -134,6 +174,14 @@ enum class JetBoxScreen { Home, Settings }
  */
 @Composable
 fun JetBoxApp(onboarding: JetBoxOnboarding, engine: EngineApi, prefs: KeyValueStore) {
+    val context = LocalContext.current
+    CompositionLocalProvider(LocalEmailLogin provides JetBoxProcess.emailLogin(context)) {
+        JetBoxAppContent(onboarding, engine, prefs)
+    }
+}
+
+@Composable
+private fun JetBoxAppContent(onboarding: JetBoxOnboarding, engine: EngineApi, prefs: KeyValueStore) {
     val context = LocalContext.current
     val homeVm: HomeViewModel = viewModel(factory = homeViewModelFactory(context))
     val access = remember(prefs) { JetBoxAdvancedAccess(prefs) }

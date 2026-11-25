@@ -115,4 +115,32 @@
     <string name="jb_widget_action_disconnect">Отключить JetBox</string>
     <string name="jb_notification_login_required_title">JetBox отключён</string>
     <string name="jb_notification_login_required_body">Связь с домом прервана. Откройте ссылку подключения ещё раз.</string>
+    <!-- Вход по рабочей почте с кодом (корпоративный VPN, слово владельца 25.11.2026). -->
+    <string name="jb_login_title">Вход по рабочей почте</string>
+    <string name="jb_login_body">Пришлём код на почту — им этот телефон подключится. Есть ссылка или QR из Личного кабинета JetBox? Просто откройте её.</string>
+    <string name="jb_login_field">Рабочая почта</string>
+    <string name="jb_login_placeholder">name@company.ru</string>
+    <string name="jb_login_send">Получить код</string>
+    <string name="jb_login_sending">Отправляем…</string>
+    <string name="jb_login_change">Указать другой адрес</string>
+    <string name="jb_login_err_invalid">Проверьте адрес почты.</string>
+    <string name="jb_login_err_unavailable">Не удалось связаться с JetBox. Проверьте интернет и попробуйте снова.</string>
+    <string name="jb_login_err_too_many">Слишком много запросов. Подождите несколько минут и попробуйте снова.</string>
+    <string name="jb_login_code_title">Введите код</string>
+    <string name="jb_login_code_body">Письмо с кодом из 6 цифр уходит на %1$s, если для этого адреса есть доступ к JetBox. Письма нет? Загляните в «Спам».</string>
+    <string name="jb_login_code_field">Код из 6 цифр</string>
+    <string name="jb_login_code_submit">Войти</string>
+    <string name="jb_login_code_checking">Проверяем…</string>
+    <string name="jb_login_code_err_bad">Неверный код.</string>
+    <plurals name="jb_login_code_err_bad_left">
+        <item quantity="one">Неверный код. Осталась %d попытка.</item>
+        <item quantity="few">Неверный код. Осталось %d попытки.</item>
+        <item quantity="many">Неверный код. Осталось %d попыток.</item>
+        <item quantity="other">Неверный код. Осталось %d попытки.</item>
+    </plurals>
+    <string name="jb_login_code_err_no_attempts">Неверный код, попыток больше нет. Запросите новый код.</string>
+    <string name="jb_login_code_err_expired">Код устарел. Запросите новый.</string>
+    <string name="jb_login_code_err_device_limit">На вашей учётной записи уже предельное число устройств. Отключите лишнее в Личном кабинете или попросите администратора добавить.</string>
+    <string name="jb_login_code_new">Прислать новый код</string>
+    <string name="jb_login_code_new_in">Новый код — через %1$d с</string>
 </resources>

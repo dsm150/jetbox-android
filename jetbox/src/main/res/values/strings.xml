@@ -113,4 +113,30 @@
     <string name="jb_widget_action_disconnect">Disconnect JetBox</string>
     <string name="jb_notification_login_required_title">JetBox disconnected</string>
     <string name="jb_notification_login_required_body">The connection to your home was lost. Open your connection link again.</string>
+    <!-- Sign-in with a work email and a code (corporate VPN, owner's decision 25.11.2026). -->
+    <string name="jb_login_title">Sign in with your work email</string>
+    <string name="jb_login_body">We’ll email you a code that connects this phone. Have a link or QR code from your JetBox account? Just open it.</string>
+    <string name="jb_login_field">Work email</string>
+    <string name="jb_login_placeholder">name@company.com</string>
+    <string name="jb_login_send">Get code</string>
+    <string name="jb_login_sending">Sending…</string>
+    <string name="jb_login_change">Use a different email</string>
+    <string name="jb_login_err_invalid">Enter a valid email address.</string>
+    <string name="jb_login_err_unavailable">Couldn’t reach JetBox. Check your internet connection and try again.</string>
+    <string name="jb_login_err_too_many">Too many requests. Wait a few minutes and try again.</string>
+    <string name="jb_login_code_title">Enter the code</string>
+    <string name="jb_login_code_body">We email a 6-digit code to %1$s if this address has access to JetBox. No email? Check your Spam folder.</string>
+    <string name="jb_login_code_field">6-digit code</string>
+    <string name="jb_login_code_submit">Sign in</string>
+    <string name="jb_login_code_checking">Checking…</string>
+    <string name="jb_login_code_err_bad">Wrong code.</string>
+    <plurals name="jb_login_code_err_bad_left">
+        <item quantity="one">Wrong code. %d attempt left.</item>
+        <item quantity="other">Wrong code. %d attempts left.</item>
+    </plurals>
+    <string name="jb_login_code_err_no_attempts">Wrong code, and no attempts are left. Request a new code.</string>
+    <string name="jb_login_code_err_expired">This code has expired. Request a new one.</string>
+    <string name="jb_login_code_err_device_limit">Your account already has the maximum number of devices. Disconnect one in your JetBox account or ask your administrator for more.</string>
+    <string name="jb_login_code_new">Send a new code</string>
+    <string name="jb_login_code_new_in">New code in %1$d s</string>
 </resources>

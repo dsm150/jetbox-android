@@ -17,6 +17,12 @@ object JetBoxConfig {
     /** Маска адреса management из ссылки: только поддомены этого домена (`JetBoxLink.isAllowedManagement`). */
     const val MANAGEMENT_SUFFIX = ".jet-net.net"
 
+    /**
+     * API приложения в Кабинете (вход по рабочей почте с кодом, корпоративный VPN — спека VPN_Box
+     * 2026-11-25-corporate-vpn-fabrika-design): `login/request`, `login/verify`. Один адрес на сборку, без discover.
+     */
+    const val APP_API_BASE = "https://box.jet-net.net/api/app/v1"
+
     const val PRIVACY_POLICY_URL = "https://jet-net.net/privacy"
     const val SITE_URL = "https://jet-net.net"
 
