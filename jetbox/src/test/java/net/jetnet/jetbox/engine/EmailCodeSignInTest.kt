@@ -36,7 +36,7 @@ class EmailCodeSignInTest {
         private val main = CoroutineScope(StandardTestDispatcher(scope.testScheduler) + SupervisorJob())
         val ob = JetBoxOnboarding(engine, store, main, log = {}, clock = { 7_000L })
         // Как в приложении: ссылка из ответа verify — доверенная, подпись JetBox safety не нужна.
-        val form = EmailLoginForm(api, main, clock = { 0L }, onConnectUrl = { ob.handle(it, trusted = true) })
+        val form = EmailLoginForm(api, main, clock = { 0L }, onConnectUrl = { url, token -> ob.handle(url, trusted = true, appToken = token) })
         init {
             engine.storedFingerprint = { store.currentBox?.setupKeyFingerprint }
             engine.onStart = {

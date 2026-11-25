@@ -35,6 +35,12 @@ data class JetBoxLinkPayload(
      * удостоверение не входит.
      */
     val enablesDefaultExit: Boolean = true,
+    /**
+     * Токен приложения из ответа `login/verify` (`app_token`): в ссылке его нет никогда — его кладёт вход по рабочей
+     * почте. Нужен «Выйти», чтобы Кабинет отозвал это устройство и освободил место. Хранится с профилем
+     * ([net.jetnet.jetbox.store.JetBoxStore.appToken]); в журнал — только маска.
+     */
+    val appToken: String? = null,
 ) {
     /** Маска ключа для экрана и логов: видны только последние 4 символа. */
     val maskedKey: String
@@ -57,7 +63,8 @@ data class JetBoxLinkPayload(
     // Ключ и токен не должны попасть в логи через toString().
     override fun toString(): String =
         "JetBoxLinkPayload(setupKey=$maskedKey, managementURL=$managementURL, exitNodeName=$exitNodeName, " +
-            "boxName=$boxName, deviceToken=${deviceToken?.let(::maskSecret)}, enablesDefaultExit=$enablesDefaultExit)"
+            "boxName=$boxName, deviceToken=${deviceToken?.let(::maskSecret)}, enablesDefaultExit=$enablesDefaultExit, " +
+            "appToken=${appToken?.let(::maskSecret)})"
 }
 
 /** Единая маска секрета для экрана и логов: видны только последние 4 символа. */

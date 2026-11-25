@@ -52,6 +52,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
@@ -98,6 +100,7 @@ fun homeViewModelFactory(context: Context): ViewModelProvider.Factory {
                 store = JetBoxStore(SharedPrefsStore(app.getSharedPreferences(JetBoxStore.PREFS_NAME, Context.MODE_PRIVATE))),
                 probe = HomeProbeRunner(),
                 updates = JetBoxProcess.updates(app),
+                privateDns = { net.jetnet.jetbox.engine.PrivateDnsReader.hostname(app) },
             )
         }
     }
@@ -126,9 +129,11 @@ fun JetBoxHomeScreen(vm: HomeViewModel, presenting: Boolean, onOpenSettings: () 
 
     // Пришла ссылка — экран сценария перекрывает всё (iOS: оверлей поверх листов). Листы и диалог —
     // отдельные окна над нашим, поэтому закрываем их сами.
+    var showsPrivateDns by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(presenting) {
         if (!presenting) return@LaunchedEffect
         showsDetails = false
+        showsPrivateDns = false
         vm.dismissVpnDenied()
     }
 
@@ -144,7 +149,20 @@ fun JetBoxHomeScreen(vm: HomeViewModel, presenting: Boolean, onOpenSettings: () 
         onSettings = onOpenSettings,
         onOpenDetails = { showsDetails = true },
         onUpdate = { ui.update?.let { openUrl(it.url) } },
+        onPrivateDns = { showsPrivateDns = true },
     )
+
+    if (showsPrivateDns && ui.privateDnsHost != null) {
+        val context = LocalContext.current
+        PrivateDnsDialog(
+            hostname = ui.privateDnsHost.orEmpty(),
+            onOpenSettings = {
+                showsPrivateDns = false
+                openNetworkSettings(context)
+            },
+            onDismiss = { showsPrivateDns = false },
+        )
+    }
 
     if (showsDetails && ui.box != null && !presenting) {
         LaunchedEffect(Unit) { vm.refreshRoutes() }
@@ -197,6 +215,7 @@ fun JetBoxHomeLayout(
     onSettings: () -> Unit,
     onOpenDetails: () -> Unit,
     onUpdate: () -> Unit = {},
+    onPrivateDns: () -> Unit = {},
 ) {
     val c = JetBoxTheme.colors
     val phase = ui.phase
@@ -262,6 +281,20 @@ fun JetBoxHomeLayout(
                 JetBoxUpdateCapsule(shown[0], onClick = onUpdate, modifier = Modifier.padding(bottom = 6.dp))
             }
 
+            // Системный «Частный DNS» — DNS идёт мимо JetBox, реклама не блокируется: капсула-предупреждение над панелью.
+            AnimatedVisibility(
+                visible = ui.showsPrivateDnsWarning,
+                enter = fadeIn(tween(300)) + expandVertically(tween(300)),
+                exit = fadeOut(tween(300)) + shrinkVertically(tween(300)),
+            ) {
+                JetBoxNoticeCapsule(
+                    stringResource(R.string.jb_private_dns_capsule),
+                    dot = c.warn,
+                    onClick = onPrivateDns,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                )
+            }
+
             Box(Modifier.widthIn(max = 420.dp).padding(bottom = 8.dp)) {
                 if (ui.hasBox) {
                     JetBoxHomeDock(ui, nowMillis, onOpen = onOpenDetails)
@@ -280,7 +313,12 @@ fun JetBoxHomeLayout(
  * высота 40 dp, зона касания 48 dp; синяя точка — единственный акцент, чтобы не спорить со щитом.
  */
 @Composable
-fun JetBoxUpdateCapsule(versionName: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun JetBoxUpdateCapsule(versionName: String, onClick: () -> Unit, modifier: Modifier = Modifier) =
+    JetBoxNoticeCapsule(stringResource(R.string.jb_update_available, versionName), JetBoxTheme.colors.accent, onClick, modifier)
+
+/** Стеклянная капсула-строка над панелью: точка цвета [dot], текст и «›». Обновление, частный DNS. */
+@Composable
+fun JetBoxNoticeCapsule(text: String, dot: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = JetBoxTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -299,10 +337,10 @@ fun JetBoxUpdateCapsule(versionName: String, onClick: () -> Unit, modifier: Modi
                 .padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(8.dp).background(c.accent, CircleShape))
+            Box(Modifier.size(8.dp).background(dot, CircleShape))
             Spacer(Modifier.width(8.dp))
             Text(
-                stringResource(R.string.jb_update_available, versionName),
+                text,
                 style = JBType.footnote.copy(fontWeight = FontWeight.Medium),
                 color = c.text,
                 maxLines = 1,
@@ -316,6 +354,33 @@ fun JetBoxUpdateCapsule(versionName: String, onClick: () -> Unit, modifier: Modi
                 modifier = Modifier.size(18.dp),
             )
         }
+    }
+}
+
+/** «Включён частный DNS»: что это значит и кнопка в настройки сети Android. */
+@Composable
+private fun PrivateDnsDialog(hostname: String, onOpenSettings: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.jb_private_dns_title)) },
+        text = { Text(stringResource(R.string.jb_private_dns_body, hostname)) },
+        confirmButton = { TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.jb_private_dns_open)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.jb_close)) } },
+    )
+}
+
+/**
+ * Настройки, где живёт «Частный DNS»: прямого экрана в Android нет — «Сеть и интернет» (у MIUI — «Подключение и общий
+ * доступ»), иначе общие настройки.
+ */
+private fun openNetworkSettings(context: Context) {
+    val intents = listOf(
+        android.content.Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS),
+        android.content.Intent(android.provider.Settings.ACTION_SETTINGS),
+    )
+    for (intent in intents) {
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (runCatching { context.startActivity(intent) }.isSuccess) return
     }
 }
 

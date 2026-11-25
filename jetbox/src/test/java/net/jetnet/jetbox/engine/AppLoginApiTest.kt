@@ -101,7 +101,8 @@ class AppLoginApiTest {
                 .put("box_ip", "100.64.0.7").toString(),
         )
         val r = api().verifyCode("user@fabrika-mfc.ru", "012345")
-        assertEquals(LoginVerifyResult.Success(link), r)
+        assertEquals(LoginVerifyResult.Success(link, "jbd_secret"), r)
+        assertFalse("токен не в toString", r.toString().contains("jbd_secret"))
         assertFalse("ключ не в toString", r.toString().contains(key))
         assertEquals("POST /api/app/v1/login/verify", paths.single())
         val b = bodies.single()
@@ -171,6 +172,32 @@ class AppLoginApiTest {
 
     @Test fun percentEncodeKeepsUnreserved() {
         assertEquals("a-b_c.d~e%20%2B%26%D0%94", percentEncode("a-b_c.d~e +&Д"))
+    }
+
+    @Test fun verifyCodeReturnsAppToken() = runBlocking {
+        serve("200 OK", JSONObject().put("connect_url", "https://box.jet-net.net/connect#k=$key").put("app_token", "jbd_abc").toString())
+        assertEquals(LoginVerifyResult.Success("https://box.jet-net.net/connect#k=$key", "jbd_abc"), api().verifyCode("a@b.ru", "000000"))
+        serve("200 OK", JSONObject().put("connect_url", "https://box.jet-net.net/connect#k=$key").toString())
+        assertEquals(LoginVerifyResult.Success("https://box.jet-net.net/connect#k=$key", null), api().verifyCode("a@b.ru", "000000"))
+    }
+
+    /** Отзыв устройства — Bearer с токеном приложения (контракт Кабинета предварительный). */
+    @Test fun revokeDeviceSendsBearer() = runBlocking {
+        serve("200 OK", """{"ok":true}""")
+        assertEquals(DeviceRevokeResult.Revoked, api().revokeDevice("jbd_abc"))
+        assertEquals("POST /api/app/v1/${HttpAppLoginApi.REVOKE_PATH}", paths.last())
+        assertEquals("Bearer jbd_abc", auth.last())
+        serve("401 Unauthorized")
+        assertEquals(DeviceRevokeResult.AlreadyRevoked, api().revokeDevice("jbd_abc"))
+        serve("404 Not Found")
+        assertEquals(DeviceRevokeResult.Failed("HTTP 404"), api().revokeDevice("jbd_abc"))
+        serve("502 Bad Gateway")
+        assertEquals(DeviceRevokeResult.Failed("HTTP 502"), api().revokeDevice("jbd_abc"))
+    }
+
+    @Test fun revokeDeviceNoServer() = runBlocking {
+        server.close()
+        assertTrue(api().revokeDevice("jbd_abc") is DeviceRevokeResult.Failed)
     }
 
     /** Адрес API RU-сборки — один, Кабинет box.jet-net.net, без discover. */

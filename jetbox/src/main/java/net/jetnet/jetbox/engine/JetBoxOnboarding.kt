@@ -6,6 +6,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -79,6 +80,10 @@ class JetBoxOnboarding(
     private val signedLinks: Boolean = JetBoxConfig.LINK_SIGNED,
     /** Открытые части ключа подписи ссылок; тесты подставляют тестовый ключ векторов. */
     private val linkKeys: List<String> = JetBoxLinkSignature.PUBLIC_KEYS,
+    /** API Кабинета — для отзыва устройства при «Выйти» ([signOut]); `null` — выход только локальный. */
+    private val login: AppLoginApi? = null,
+    /** Сколько ждём ответа Кабинета на отзыв устройства, прежде чем выйти локально. */
+    private val revokeTimeoutMs: Long = 15_000,
 ) {
     sealed class Step {
         /** Экрана нет, приложение живёт обычной жизнью. */
@@ -140,7 +145,7 @@ class JetBoxOnboarding(
      * Точка входа из интента или из входа по рабочей почте. `true` — ссылка наша и обработана, `false` — не наша.
      * [trusted] — ссылка из ответа `login/verify` (TLS, наш Кабинет): подпись JetBox safety не нужна, как в iOS.
      */
-    fun handle(url: String, trusted: Boolean = false): Boolean {
+    fun handle(url: String, trusted: Boolean = false, appToken: String? = null): Boolean {
         when (val outcome = JetBoxLink.parse(url, signed = signedLinks, trusted = trusted, signatureKeys = linkKeys)) {
             JetBoxLink.Outcome.NotOurs -> return false
 
@@ -168,7 +173,8 @@ class JetBoxOnboarding(
             }
 
             is JetBoxLink.Outcome.Payload -> {
-                val payload = outcome.payload
+                // Токен приложения — только у ссылки из ответа verify; ссылка из интента его не несёт.
+                val payload = outcome.payload.copy(appToken = appToken.takeIf { trusted })
                 // Повторное открытие той же ссылки посреди сценария не откатывает его в начало.
                 if (activePayload == payload && !isRestartable) return true
                 log("JetBox: ссылка принята, объект ${payload.displayName}, ключ ${payload.maskedKey}")
@@ -230,6 +236,61 @@ class JetBoxOnboarding(
         cancelFlow()
         lastPayload = null
         _step.value = Step.Idle
+    }
+
+    // endregion
+    // region Выход
+
+    /**
+     * «Выйти» (настройки, 1.0.6 — решение владельца 26.11.2026): идущий сценарий отменяется; есть токен приложения
+     * (вход по рабочей почте) — Кабинет отзывает это устройство и освобождает место ([AppLoginApi.revokeDevice]; отказ,
+     * нет метода или нет сети — выход всё равно локальный, место освобождает администратор); туннель гасится,
+     * личность устройства на телефоне стирается ([EngineApi.forgetDevice]), JetBox и токен забываются. Как сценарий,
+     * ждёт предыдущий и сам становится [lastJob]: ссылка, открытая во время выхода, не поднимет ядро на полустёртом диске.
+     *
+     * Неудача — ничего не забыто: туннель не остановился — [IdentityRegistration.EngineStillRunning];
+     * файлы не стёрлись — ошибка движка, хранилище прежнее.
+     */
+    suspend fun signOut(): Result<Unit> {
+        val previous = lastJob
+        dismiss()
+        val job = scope.async {
+            withContext(NonCancellable) { previous?.join() }
+            forgetEverything()
+        }
+        lastJob = job
+        return job.await()
+    }
+
+    private suspend fun forgetEverything(): Result<Unit> {
+        revokeInCabinet()
+        if (engine.isRunning() || engine.state.value != VpnDisplayState.DISCONNECTED) {
+            engine.stop()
+            if (withTimeoutOrNull(stopTimeoutMs) { awaitStopped() } == null) {
+                log("JetBox: выход — туннель не остановился, ничего не стёрто")
+                return Result.failure(IdentityRegistration.EngineStillRunning())
+            }
+        }
+        engine.forgetDevice().onFailure {
+            log("JetBox: выход — файлы профиля не стёрты: ${it.message}")
+            return Result.failure(it)
+        }
+        store.forget()
+        log("JetBox: выход — подключение на телефоне стёрто")
+        return Result.success(Unit)
+    }
+
+    /** Отзыв устройства в Кабинете — до остановки туннеля (через него Кабинет тоже доступен); исход не мешает выходу. */
+    private suspend fun revokeInCabinet() {
+        val token = store.appToken ?: return log("JetBox: выход — токена приложения нет (подключение по ссылке), только локально")
+        val api = login ?: return
+        val result = withTimeoutOrNull(revokeTimeoutMs) { api.revokeDevice(token) }
+        when (result) {
+            DeviceRevokeResult.Revoked -> log("JetBox: выход — Кабинет отозвал устройство, место освобождено")
+            DeviceRevokeResult.AlreadyRevoked -> log("JetBox: выход — устройство в Кабинете уже отозвано")
+            is DeviceRevokeResult.Failed -> log("JetBox: выход — Кабинет не отозвал устройство (${result.details}), выход локальный")
+            null -> log("JetBox: выход — Кабинет не ответил за ${revokeTimeoutMs / 1000} с, выход локальный")
+        }
     }
 
     // endregion

@@ -94,8 +94,16 @@ data class HomeUiState(
     val coreNoNetwork: Boolean = false,
     /** На сайте есть версия новее: строка на главном экране и в настройках. `null` — ничего не показывать. */
     val update: UpdateInfo? = null,
+    /**
+     * Системный «Частный DNS» (строгий режим) — имя сервера; `null` — нет. На главном экране — предупреждение, что
+     * блокировка рекламы не работает, с кнопкой в настройки Android (решение владельца 26.11.2026).
+     */
+    val privateDnsHost: String? = null,
 ) {
     val hasBox: Boolean get() = box != null
+
+    /** Предупреждение о частном DNS — только при подключённом JetBox: без него блокировки и так нет. */
+    val showsPrivateDnsWarning: Boolean get() = hasBox && privateDnsHost != null
 
     /**
      * Туннель включён, но сети нет: ядро стоит в «подключаюсь» с отметкой «нет сети». В iOS это
@@ -155,6 +163,11 @@ class HomeViewModel(
     private val probe: HomeProbeRunner = HomeProbeRunner(),
     scope: CoroutineScope? = null,
     private val updates: UpdateChecker? = null,
+    /**
+     * Имя сервера системного «Частного DNS» (строгий режим), `null` — выключен или «автоматически». Пока он задан,
+     * ядро не ставит в туннель свой DNS, и блокировка рекламы JetBox не работает (приёмка Fabrika 26.11.2026).
+     */
+    private val privateDns: () -> String? = { null },
 ) : ViewModel() {
 
     private val scope: CoroutineScope = scope ?: viewModelScope
@@ -183,10 +196,13 @@ class HomeViewModel(
 
     private val update: StateFlow<UpdateInfo?> = updates?.available ?: MutableStateFlow(null)
 
+    private val privateDnsHost = MutableStateFlow<String?>(null)
+
     val ui: StateFlow<HomeUiState> = combine(
         combine(tunnel, box, engine.online, probe.latencyMs, pending) { t, b, on, probed, p -> build(t, b, on, probed, p) },
         update,
-    ) { s, u -> s.copy(update = u) }.stateIn(this.scope, SharingStarted.Eagerly, build(
+        privateDnsHost,
+    ) { s, u, dns -> s.copy(update = u, privateDnsHost = dns) }.stateIn(this.scope, SharingStarted.Eagerly, build(
         Tunnel(engine.state.value, engine.peers.value, engine.routes.value,
             engine.connectedSinceMillis.value, engine.clientState.value),
         box.value, engine.online.value, null, null,
@@ -247,6 +263,8 @@ class HomeViewModel(
     suspend fun whileVisible() = coroutineScope {
         reloadBox()
         if (updates != null) launch { updates.check() }
+        // Частный DNS меняют в настройках телефона — перечитываем при каждом возврате на экран и смене состояния туннеля.
+        launch { engine.state.collect { privateDnsHost.value = privateDns() } }
         engine.setPolling(true)
         try {
             probe.run(probeTarget)

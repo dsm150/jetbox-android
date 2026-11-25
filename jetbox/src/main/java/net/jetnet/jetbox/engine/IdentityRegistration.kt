@@ -102,6 +102,29 @@ class IdentityRegistration(
         }
     }
 
+    /**
+     * «Выйти»: стереть файлы профиля на тех же условиях, что замена, — запуск ядра закрыт, ядро
+     * работает — отказ [EngineStillRunning]. Не стёрлось — `IOException` из [ProfileFilesSwap.wipe].
+     */
+    fun forget(): Result<Unit> {
+        gate.close()
+        try {
+            if (gate.isEngineRunning()) {
+                log("выход: ядро ещё работает, файлы не трогаем")
+                return Result.failure(EngineStillRunning())
+            }
+            return try {
+                swap.wipe()
+                log("выход: файлы профиля стёрты")
+                Result.success(Unit)
+            } catch (e: IOException) {
+                Result.failure(e)
+            }
+        } finally {
+            gate.open()
+        }
+    }
+
     private suspend fun swapAndLogin(
         newFingerprint: String,
         login: suspend () -> Exception?,

@@ -97,7 +97,7 @@ object JetBoxProcess {
                 api = loginApi,
                 scope = MainScope(),
                 // Ссылка из ответа verify (TLS, наш Кабинет) — доверенная: подпись JetBox safety не нужна, как в iOS.
-                onConnectUrl = { url -> onboarding(app).handle(url, trusted = true) },
+                onConnectUrl = { url, appToken -> onboarding(app).handle(url, trusted = true, appToken = appToken) },
             ).also { emailLogin = it }
         }
 
@@ -133,6 +133,7 @@ object JetBoxProcess {
             engine = JetBoxEngine.get(app),
             store = JetBoxStore(prefs(app)),
             scope = MainScope(),
+            login = loginApi,
         )
     }
 
@@ -225,6 +226,14 @@ private fun JetBoxAppContent(onboarding: JetBoxOnboarding, engine: EngineApi, pr
                     onClose = { screen = JetBoxScreen.Home },
                     update = ui.update,
                     onCheckUpdates = homeVm::checkUpdatesNow,
+                    onSignOut = {
+                        onboarding.signOut().onSuccess {
+                            homeVm.reloadBox()
+                            // Форма входа — с ввода адреса, а не с «проверьте почту» прошлого входа.
+                            JetBoxProcess.emailLogin(context).changeEmail()
+                            screen = JetBoxScreen.Home
+                        }
+                    },
                 )
             }
         }

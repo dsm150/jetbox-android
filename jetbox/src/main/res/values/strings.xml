@@ -145,4 +145,14 @@
     <string name="jb_login_code_err_try_again">JetBox didn’t respond in time. Try again.</string>
     <string name="jb_login_code_new">Send a new code</string>
     <string name="jb_login_code_new_in">New code in %1$d s</string>
+    <string name="jb_sign_out">Sign out</string>
+    <string name="jb_sign_out_title">Sign out?</string>
+    <string name="jb_sign_out_body">JetBox will disconnect and forget this phone’s connection. To connect again, sign in with your work email or open the link from your JetBox account.</string>
+    <string name="jb_sign_out_progress">Signing out…</string>
+    <string name="jb_sign_out_failed">Couldn’t sign out. Try again.</string>
+    <!-- System Private DNS (owner's decision 26.11.2026). -->
+    <string name="jb_private_dns_capsule">Private DNS: ad filtering is off</string>
+    <string name="jb_private_dns_title">Private DNS is on</string>
+    <string name="jb_private_dns_body">Your phone uses a private DNS server (%1$s). While it’s on, website addresses are looked up outside JetBox, and JetBox ad filtering doesn’t work. Turn it off: Settings → Network &amp; internet (or Connection &amp; sharing) → Private DNS → Off or Automatic.</string>
+    <string name="jb_private_dns_open">Open settings</string>
 </resources>

@@ -18,6 +18,10 @@ class JetBoxStore(private val kv: KeyValueStore) {
      * включён; у того же подключения выбранный руками выход сохраняется (повтор ссылки его не обнуляет).
      */
     fun remember(payload: JetBoxLinkPayload, nowMillis: Long) {
+        val same = currentBox?.isSameConnection(payload) == true
+        // Токен приложения — от входа по рабочей почте. Ссылка того же JetBox из Кабинета его не несёт — прежний
+        // остаётся; другой JetBox — прежний токен чужой, забываем.
+        appToken = payload.appToken ?: appToken.takeIf { same }
         val kept = currentBox?.takeIf { it.isSameConnection(payload) }?.selectedExitNode
         currentBox = JetBoxBox(
             managementURL = payload.managementURL,
@@ -32,6 +36,21 @@ class JetBoxStore(private val kv: KeyValueStore) {
     }
 
     /** Выбранный выход важнее того, что был в ссылке, но удостоверение JetBox не трогает. */
+    /**
+     * Токен приложения (`app_token` из `login/verify`) — для «Выйти» с отзывом устройства в Кабинете. Хранится как есть
+     * (его отправляют), только в приватных настройках приложения (без бэкапа и переноса — data_extraction_rules), как и
+     * ключ WireGuard ядра; в журнал не пишется.
+     */
+    var appToken: String?
+        get() = kv.getString(APP_TOKEN_KEY)
+        set(value) = kv.putString(APP_TOKEN_KEY, value)
+
+    /** «Выйти»: забыть JetBox и токен приложения. */
+    fun forget() {
+        currentBox = null
+        appToken = null
+    }
+
     fun rememberExitNode(name: String?) {
         val box = currentBox ?: return
         currentBox = box.copy(selectedExitNode = name)
@@ -40,5 +59,6 @@ class JetBoxStore(private val kv: KeyValueStore) {
     companion object {
         const val PREFS_NAME = "jetbox"
         private const val BOX_KEY = "jetbox.currentBox"
+        private const val APP_TOKEN_KEY = "jetbox.appToken"
     }
 }

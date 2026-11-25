@@ -82,6 +82,24 @@ class HomeViewModelTest {
         assertEquals("Дом на Озёрной", ui.box?.displayName)
     }
 
+    /** Частный DNS: предупреждение — только при подключённом JetBox; читается при смене состояния туннеля. */
+    @Test fun privateDnsWarning() = runTest {
+        var host: String? = "1dot1dot1dot1.cloudflare-dns.com"
+        val engine = FakeEngine()
+        val store = JetBoxStore(MemoryStore()).apply { currentBox = box }
+        val vm = HomeViewModel(engine, store, HomeProbeRunner(Probe(24)), backgroundScope as CoroutineScope, privateDns = { host })
+        val visible = backgroundScope.launch { vm.whileVisible() }
+        runCurrent()
+        assertEquals("1dot1dot1dot1.cloudflare-dns.com", vm.ui.value.privateDnsHost)
+        assertTrue(vm.ui.value.showsPrivateDnsWarning)
+        host = null
+        engine.emit(VpnDisplayState.CONNECTING)
+        runCurrent()
+        assertFalse(vm.ui.value.showsPrivateDnsWarning)
+        visible.cancel()
+        assertFalse("без JetBox — не показываем", HomeUiState(box = null, privateDnsHost = "x").showsPrivateDnsWarning)
+    }
+
     @Test fun connecting() = runTest {
         val e = env()
         e.engine.emit(VpnDisplayState.CONNECTING)

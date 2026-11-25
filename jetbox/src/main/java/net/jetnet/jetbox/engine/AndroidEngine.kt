@@ -334,6 +334,23 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
         runCatching { swapFor(ProfileManagerWrapper(app).activeConfigPath).hasLeftovers() }.getOrDefault(false)
     }
 
+    override suspend fun forgetDevice(): Result<Unit> =
+        registerMutex.withLock {
+            withContext(Dispatchers.IO) {
+                // Без привязки к сервису не узнать, работает ли ядро, — стирать вслепую нельзя.
+                if (withTimeoutOrNull(BIND_TIMEOUT_MS) { awaitBinder() } == null) {
+                    return@withContext Result.failure(IllegalStateException("VPN service is not bound"))
+                }
+                val configPath = try {
+                    ProfileManagerWrapper(app).activeConfigPath
+                } catch (e: Exception) {
+                    return@withContext Result.failure(e)
+                }
+                IdentityRegistration(swapFor(configPath), processGate) { Log.i(TAG, it) }.forget()
+                    .onFailure { Log.w(TAG, "forget failed: ${it.message}") }
+            }
+        }
+
     /** Файлы активного профиля ядра, хранящие личность устройства; конфиг — первым (главный). */
     private fun swapFor(configPath: String): ProfileFilesSwap {
         val statePath = runCatching { ProfileManagerWrapper(app).activeStateFilePath }.getOrNull()

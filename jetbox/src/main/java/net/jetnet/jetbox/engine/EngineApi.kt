@@ -79,6 +79,13 @@ interface EngineApi {
      */
     suspend fun hasUnfinishedSwap(): Boolean
 
+    /**
+     * «Выйти»: стереть личность устройства на телефоне — конфиг ядра (ключ WireGuard, адрес
+     * управления), состояние и остатки замены. Ядро должно быть остановлено: работает — отказ
+     * [IdentityRegistration.EngineStillRunning], файлы не тронуты. Сервер о выходе не узнаёт.
+     */
+    suspend fun forgetDevice(): Result<Unit>
+
     /** Интент системного согласия на VPN (`VpnService.prepare`), `null` — согласие уже есть. */
     fun needsVpnConsent(): Intent?
 

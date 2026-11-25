@@ -149,4 +149,14 @@
     <string name="jb_login_code_err_try_again">JetBox не успел ответить. Попробуйте ещё раз.</string>
     <string name="jb_login_code_new">Прислать новый код</string>
     <string name="jb_login_code_new_in">Новый код — через %1$d с</string>
+    <string name="jb_sign_out">Выйти</string>
+    <string name="jb_sign_out_title">Выйти?</string>
+    <string name="jb_sign_out_body">JetBox отключится и забудет подключение этого телефона. Чтобы подключиться снова, войдите по рабочей почте или откройте ссылку из Личного кабинета.</string>
+    <string name="jb_sign_out_progress">Выходим…</string>
+    <string name="jb_sign_out_failed">Не получилось выйти. Попробуйте ещё раз.</string>
+    <!-- Системный «Частный DNS» (решение владельца 26.11.2026). -->
+    <string name="jb_private_dns_capsule">Частный DNS: реклама не блокируется</string>
+    <string name="jb_private_dns_title">Включён «Частный DNS»</string>
+    <string name="jb_private_dns_body">В настройках телефона задан частный DNS (%1$s). Пока он включён, адреса сайтов узнаются мимо JetBox, и блокировка рекламы не работает. Выключите его: Настройки → Сеть и интернет (или «Подключение и общий доступ») → Частный DNS → «Выкл.» или «Автоматически».</string>
+    <string name="jb_private_dns_open">Открыть настройки</string>
 </resources>

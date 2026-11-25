@@ -119,6 +119,22 @@ class ProfileFilesSwap(
         syncDir()
     }
 
+    /**
+     * «Выйти»: стереть личность устройства — файлы профиля и всё, что осталось от оборванной замены.
+     * Метка — первой: без неё старт процесса ничего «возвращать» не станет, даже если стирание прервётся.
+     */
+    @Throws(IOException::class)
+    fun wipe() {
+        remove(pendingFile)
+        syncDir()
+        for (f in files) {
+            remove(backupOf(f))
+            remove(markerOf(f))
+            remove(f)
+        }
+        syncDir()
+    }
+
     /** Удалить, если есть; не вышло и со второй попытки — `IOException`. */
     private fun remove(f: File) {
         repeat(2) {

@@ -135,6 +135,18 @@ class FakeEngine(
         return registerResult.exceptionOrNull() as Exception?
     }
 
+    var forgetCalls = 0; private set
+
+    override suspend fun forgetDevice(): Result<Unit> {
+        forgetCalls++
+        val gate = object : IdentityRegistration.TunnelGate {
+            override fun close() { gateClosed = true }
+            override fun open() { gateClosed = false }
+            override fun isEngineRunning() = isRunning()
+        }
+        return IdentityRegistration(swap(), gate).forget()
+    }
+
     override suspend fun hasDeviceConfig(): Boolean = configExists
 
     /** Если задан — `hasUnfinishedSwap` ждёт его (проверка «в полёте», как у `AndroidEngine` на IO). */

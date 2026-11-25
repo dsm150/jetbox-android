@@ -182,4 +182,32 @@ class ManifestTest {
         assertTrue("переключатель удалённых отладочных пакетов должен быть скрыт",
             t.contains("binding.allowRemoteJobsLayout.setVisibility(View.GONE);"))
     }
+
+    /**
+     * Ни облачного бэкапа, ни переноса на новый телефон: в приватных файлах ключ WireGuard (netbird.cfg,
+     * state.json, профиль ядра) и токен приложения. Ключ на двух телефонах — один пир на двоих; на новом
+     * телефоне — вход по email заново (решение руководителя JetBox 22.11.2026).
+     */
+    @Test fun noBackupOrDeviceTransfer() {
+        val application = Regex("<application\\b[^>]*>").find(app)!!.value
+        assertTrue(application.contains("android:allowBackup=\"false\""))
+        assertTrue(application.contains("android:dataExtractionRules=\"@xml/data_extraction_rules\""))
+        assertTrue(application.contains("android:fullBackupContent=\"@xml/backup_rules\""))
+
+        val xml = File(root, "app/src/main/res/xml")
+        val noComments = { f: String -> File(xml, f).readText().replace(Regex("<!--[\\s\\S]*?-->"), "") }
+        val rules = noComments("data_extraction_rules.xml")
+        val all = listOf("root", "file", "database", "sharedpref", "external")
+        for (section in listOf("cloud-backup", "device-transfer")) {
+            val body = Regex("<$section\\b[^>]*>([\\s\\S]*?)</$section>").find(rules)?.groupValues?.get(1)
+            assertNotNull("нет раздела $section", body)
+            assertFalse("$section: ничего не включаем", body!!.contains("<include"))
+            for (d in all + all.filter { it != "external" }.map { "device_$it" }) {
+                assertTrue("$section: не исключён домен $d", body.contains("<exclude domain=\"$d\" path=\".\" />"))
+            }
+        }
+        val full = noComments("backup_rules.xml")
+        assertFalse(full.contains("<include"))
+        for (d in all) assertTrue("backup_rules: не исключён $d", full.contains("<exclude domain=\"$d\" path=\".\" />"))
+    }
 }

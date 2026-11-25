@@ -36,6 +36,34 @@ class ProfileFilesSwapTest {
             .any { s -> it.name.endsWith(s) }
     }.toList()
 
+    @Test fun wipeRemovesFilesAndLeftovers() {
+        cfg.writeBytes(oldCfg)
+        state.writeBytes(oldState)
+        account.writeText("{}")
+        val s = swap()
+        s.stash(fp)
+        cfg.writeText("{\"PrivateKey\":\"half-done\"}")
+        s.wipe()
+        assertFalse(cfg.exists())
+        assertFalse(state.exists())
+        assertFalse(account.exists())
+        assertTrue("ни копий, ни маркеров, ни метки: ${leftovers()}", leftovers().isEmpty())
+        assertFalse(s.hasConfig())
+        assertFalse(s.hasLeftovers())
+        // Стирать нечего — тоже успех.
+        s.wipe()
+    }
+
+    @Test fun wipeThatCannotDeleteThrows() {
+        cfg.writeBytes(oldCfg)
+        try {
+            swap { false }.wipe()
+            fail("ожидали IOException")
+        } catch (_: IOException) {
+        }
+        assertTrue(cfg.exists())
+    }
+
     @Test fun stashWritesPendingAndMovesFilesAway() {
         cfg.writeBytes(oldCfg)
         state.writeBytes(oldState)

@@ -23,14 +23,32 @@ import java.net.URL
  *   уже использован; `409 {"error":"device_limit"}` — предел устройств на человека; `409 {"error":"not_available"}` —
  *   подключение недоступно; `429` — лимит; `502 {"error":"unavailable"}` — management не выдал ключ, повторить.
  *
- * Только вход по коду: ссылки из письма, токена приложения и удаления аккаунта в RU-приложении нет (слово
- * владельца 25.11.2026: «взять только часть саморегистрации из приложения»).
+ * Только вход по коду: ссылки из письма и удаления аккаунта в RU-приложении нет (слово владельца 25.11.2026). Токен
+ * приложения (`app_token` из verify) хранится для «Выйти» (1.0.6, решение владельца 26.11.2026): [revokeDevice] просит
+ * Кабинет отозвать это устройство и освободить место (предел — 2 на человека).
+ *
+ * `revokeDevice` — по контракту руководителя JetBox (метод Кабинета ещё делается): до контракта путь
+ * [REVOKE_PATH] и ответы — предварительные; любой отказ или отсутствие метода — только локальный выход.
  *
  * Код и ключ — секреты: ни в журнал, ни в подробности отказа (там только код ответа).
  */
 interface AppLoginApi {
     suspend fun request(email: String, lang: String): LoginRequestResult
     suspend fun verifyCode(email: String, code: String): LoginVerifyResult
+
+    /** Отозвать устройство этого токена в Кабинете («Выйти»). Не умеет — [DeviceRevokeResult.Failed]. */
+    suspend fun revokeDevice(appToken: String): DeviceRevokeResult = DeviceRevokeResult.Failed("not supported")
+}
+
+sealed class DeviceRevokeResult {
+    /** `2xx`: устройство отозвано, место освобождено. */
+    data object Revoked : DeviceRevokeResult()
+
+    /** `401`: токен уже погашен — устройство отозвано раньше (в Кабинете или прошлым выходом). */
+    data object AlreadyRevoked : DeviceRevokeResult()
+
+    /** Сеть, лимит, `404` (метода ещё нет), `5xx` — место не освобождено, выход всё равно локальный. */
+    data class Failed(val details: String) : DeviceRevokeResult()
 }
 
 sealed class LoginRequestResult {
@@ -45,7 +63,7 @@ sealed class LoginRequestResult {
 
 sealed class LoginVerifyResult {
     /** Ссылка подключения `/connect#k=…` — дальше тот же путь, что у ссылки из Кабинета. */
-    data class Success(val connectUrl: String) : LoginVerifyResult() {
+    data class Success(val connectUrl: String, val appToken: String? = null) : LoginVerifyResult() {
         override fun toString(): String = "Success(…)"
     }
     /** `410`: код устарел или погашен — нужен новый. */
@@ -128,7 +146,8 @@ class HttpAppLoginApi(
                     } catch (e: JSONException) {
                         null
                     }
-                    json?.let(::connectUrlFrom)?.let { LoginVerifyResult.Success(it) }
+                    json?.let(::connectUrlFrom)
+                        ?.let { LoginVerifyResult.Success(it, json.optString("app_token").trim().takeIf(String::isNotEmpty)) }
                         ?: LoginVerifyResult.Failed("HTTP 200: no connection data")
                 }
                 401 -> LoginVerifyResult.BadCode(
@@ -149,6 +168,16 @@ class HttpAppLoginApi(
         }
     }
 
+    override suspend fun revokeDevice(appToken: String): DeviceRevokeResult =
+        when (val r = post(REVOKE_PATH, JSONObject(), bearer = appToken)) {
+            is Reply.NoNetwork -> DeviceRevokeResult.Failed(r.details)
+            is Reply.Status -> when (r.code) {
+                in 200..299 -> DeviceRevokeResult.Revoked
+                401 -> DeviceRevokeResult.AlreadyRevoked
+                else -> DeviceRevokeResult.Failed("HTTP ${r.code}")
+            }
+        }
+
     private fun jsonOf(body: String?): JSONObject? = body?.let { runCatching { JSONObject(it) }.getOrNull() }
 
     private sealed class Reply {
@@ -156,7 +185,7 @@ class HttpAppLoginApi(
         class NoNetwork(val details: String) : Reply()
     }
 
-    private suspend fun post(path: String, json: JSONObject): Reply = withContext(Dispatchers.IO) {
+    private suspend fun post(path: String, json: JSONObject, bearer: String? = null): Reply = withContext(Dispatchers.IO) {
         val conn = try {
             URL("${baseUrl.trimEnd('/')}/$path").openConnection() as HttpURLConnection
         } catch (e: IOException) {
@@ -172,6 +201,7 @@ class HttpAppLoginApi(
             conn.setRequestProperty("User-Agent", userAgent)
             conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             conn.setRequestProperty("Accept", "application/json")
+            bearer?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
             val bytes = json.toString().toByteArray(Charsets.UTF_8)
             // Без setFixedLengthStreamingMode: в потоковом режиме JDK при 401 не отдаёт тело (attempts_left).
             conn.outputStream.use { it.write(bytes) }
@@ -209,6 +239,9 @@ class HttpAppLoginApi(
         const val PLATFORM = "android"
         const val ERROR_NOT_AVAILABLE = "not_available"
         const val REASON_USED = "used"
+
+        /** Отзыв устройства по токену приложения — предварительно, до контракта Кабинета. */
+        const val REVOKE_PATH = "device/revoke"
         const val TIMEOUT_MS = 15_000
         const val MAX_BYTES = 64 * 1024
     }

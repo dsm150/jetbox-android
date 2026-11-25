@@ -24,8 +24,8 @@ class EmailLoginForm(
     private val lang: String = "ru",
     private val cooldownMs: Long = 60_000,
     private val clock: () -> Long = System::currentTimeMillis,
-    /** Ссылка подключения; `false` — ссылка от Кабинета не наша (сценарий её не взял). */
-    private val onConnectUrl: (String) -> Boolean = { true },
+    /** Ссылка подключения и токен приложения; `false` — ссылка от Кабинета не наша (сценарий её не взял). */
+    private val onConnectUrl: (String, String?) -> Boolean = { _, _ -> true },
 ) {
     enum class Error { INVALID_EMAIL, UNAVAILABLE, TOO_MANY }
 
@@ -104,7 +104,7 @@ class EmailLoginForm(
             _state.value = when (result) {
                 // Дальше — экран «Ваш JetBox» (или отказ ссылки) поверх; форма вернётся к началу, если его закроют.
                 is LoginVerifyResult.Success ->
-                    if (onConnectUrl(result.connectUrl)) State.Editing()
+                    if (onConnectUrl(result.connectUrl, result.appToken)) State.Editing()
                     else now.copy(verifying = false, error = CodeError.UNAVAILABLE)
                 is LoginVerifyResult.BadCode -> now.copy(
                     verifying = false,

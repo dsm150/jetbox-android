@@ -20,6 +20,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -119,8 +124,22 @@ fun JetBoxSettingsScreen(
     onOpenAdvanced: (() -> Unit)? = null,
     update: UpdateInfo? = null,
     onCheckUpdates: () -> Unit = {},
+    /** «Выйти»; `null` — пункта нет. Успех — вызывающий закрывает настройки. */
+    onSignOut: (suspend () -> Result<Unit>)? = null,
 ) {
     val context = LocalContext.current
+    var asksSignOut by rememberSaveable { mutableStateOf(false) }
+    var signingOut by remember { mutableStateOf(false) }
+    var signOutFailed by remember { mutableStateOf(false) }
+    val signOutScope = rememberCoroutineScope()
+    val signOutRow: (() -> Unit)? = if (box != null && onSignOut != null) {
+        {
+            signOutFailed = false
+            asksSignOut = true
+        }
+    } else {
+        null
+    }
     LaunchedEffect(Unit) { onCheckUpdates() }
     val resources = LocalResources.current
     var unlocked by remember { mutableStateOf(access.isUnlocked) }
@@ -199,9 +218,53 @@ fun JetBoxSettingsScreen(
                     advancedMode = false
                 },
                 onClose = onClose,
+                onSignOut = signOutRow,
             )
         }
     }
+
+    if (asksSignOut && onSignOut != null) {
+        JetBoxSignOutDialog(
+            signingOut = signingOut,
+            failed = signOutFailed,
+            onConfirm = {
+                signingOut = true
+                signOutFailed = false
+                signOutScope.launch {
+                    val ok = onSignOut().isSuccess
+                    signingOut = false
+                    if (ok) asksSignOut = false else signOutFailed = true
+                }
+            },
+            onDismiss = { if (!signingOut) asksSignOut = false },
+        )
+    }
+}
+
+/** Подтверждение «Выйти?»: пока идёт выход — кнопки заняты; неудача — строка под текстом. */
+@Composable
+internal fun JetBoxSignOutDialog(signingOut: Boolean, failed: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.jb_sign_out_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.jb_sign_out_body))
+                if (failed) Text(stringResource(R.string.jb_sign_out_failed), color = JetBoxTheme.colors.danger)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !signingOut) {
+                Text(
+                    stringResource(if (signingOut) R.string.jb_sign_out_progress else R.string.jb_sign_out),
+                    color = if (signingOut) JetBoxTheme.colors.muted else JetBoxTheme.colors.danger,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !signingOut) { Text(stringResource(R.string.jb_cancel)) }
+        },
+    )
 }
 
 /** Настройки без привязки к данным: всё приходит параметрами. */
@@ -219,6 +282,7 @@ fun JetBoxSettingsLayout(
     onClose: () -> Unit,
     updateVersion: String? = null,
     onUpdate: () -> Unit = {},
+    onSignOut: (() -> Unit)? = null,
 ) {
     val c = JetBoxTheme.colors
     JBPage(
@@ -285,6 +349,14 @@ fun JetBoxSettingsLayout(
             JBSection(footer = stringResource(R.string.jb_settings_advanced_off_footer)) {
                 JBListRow(onClick = onAdvancedOff) {
                     Text(stringResource(R.string.jb_settings_advanced_off), style = JBType.body, color = c.danger)
+                }
+            }
+        }
+
+        if (onSignOut != null) {
+            JBSection {
+                JBListRow(onClick = onSignOut) {
+                    Text(stringResource(R.string.jb_sign_out), style = JBType.body, color = c.danger)
                 }
             }
         }

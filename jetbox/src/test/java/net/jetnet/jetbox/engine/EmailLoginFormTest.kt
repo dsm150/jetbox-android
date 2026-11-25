@@ -31,6 +31,17 @@ class FakeLoginApi : AppLoginApi {
         codes += email to code
         return codeResults.removeFirstOrNull() ?: LoginVerifyResult.Failed("no mock")
     }
+
+    val revoked = mutableListOf<String>()
+    var revokeResult: DeviceRevokeResult = DeviceRevokeResult.Revoked
+    /** Ответ отзыва задерживается навсегда — проверка таймаута выхода. */
+    var revokeHangs = false
+
+    override suspend fun revokeDevice(appToken: String): DeviceRevokeResult {
+        revoked += appToken
+        if (revokeHangs) kotlinx.coroutines.awaitCancellation()
+        return revokeResult
+    }
 }
 
 /** Вход по рабочей почте с кодом: адрес → `login/request` → код → `login/verify` → ссылка в сценарий. */
@@ -39,13 +50,14 @@ class EmailLoginFormTest {
     private var now = 1_000_000L
     private val email = "ivan@fabrika-mfc.ru"
     private val connected = mutableListOf<String>()
+    private val tokens = mutableListOf<String?>()
     private var accepts = true
 
     private fun TestScope.form(api: FakeLoginApi) = EmailLoginForm(
         api = api,
         scope = CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob()),
         clock = { now },
-        onConnectUrl = { url -> connected += url; accepts },
+        onConnectUrl = { url, token -> connected += url; tokens += token; accepts },
     )
 
     private fun TestScope.atCode(api: FakeLoginApi): EmailLoginForm {
@@ -69,12 +81,13 @@ class EmailLoginFormTest {
     @Test fun rightCodeHandsConnectUrlToScenario() = runTest {
         val api = FakeLoginApi()
         val f = atCode(api)
-        api.codeResults += LoginVerifyResult.Success("https://box.jet-net.net/connect#k=x")
+        api.codeResults += LoginVerifyResult.Success("https://box.jet-net.net/connect#k=x", appToken = "jbd_token")
         f.submitCode("012345")
         assertTrue((f.state.value as State.Code).verifying)
         advanceUntilIdle()
         assertEquals(listOf(email to "012345"), api.codes)
         assertEquals(listOf("https://box.jet-net.net/connect#k=x"), connected)
+        assertEquals("токен приложения уходит в сценарий вместе со ссылкой", listOf<String?>("jbd_token"), tokens)
         assertEquals(State.Editing(), f.state.value)
     }
 

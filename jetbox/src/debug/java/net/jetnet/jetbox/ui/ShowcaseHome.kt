@@ -60,6 +60,7 @@ class ShowcaseEngine(initial: ShowcaseHomeState) : EngineApi {
         freshIdentity: Boolean,
         onRegistered: () -> Unit,
     ): Result<Unit> = Result.success(Unit).also { onRegistered() }
+    override suspend fun forgetDevice(): Result<Unit> = Result.success(Unit)
     override suspend fun hasDeviceConfig() = true
     override suspend fun hasUnfinishedSwap() = false
     override fun needsVpnConsent(): Intent? = null
