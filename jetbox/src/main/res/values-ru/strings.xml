@@ -159,4 +159,7 @@
     <string name="jb_private_dns_title">Включён «Частный DNS»</string>
     <string name="jb_private_dns_body">В настройках телефона задан частный DNS (%1$s). Пока он включён, адреса сайтов узнаются мимо JetBox, и блокировка рекламы не работает. Выключите его: Настройки → Сеть и интернет (или «Подключение и общий доступ») → Частный DNS → «Выкл.» или «Автоматически».</string>
     <string name="jb_private_dns_open">Открыть настройки</string>
+    <string name="jb_sign_out_revoke_failed">JetBox не смог освободить место этого телефона в Личном кабинете. Повторите — или выйдите только на телефоне: тогда место освободит администратор.</string>
+    <string name="jb_sign_out_retry">Повторить</string>
+    <string name="jb_sign_out_local_only">Только на телефоне</string>
 </resources>

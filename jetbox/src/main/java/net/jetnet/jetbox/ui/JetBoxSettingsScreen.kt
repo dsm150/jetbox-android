@@ -72,6 +72,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.delay
 import net.jetnet.jetbox.BuildConfig
 import net.jetnet.jetbox.R
+import net.jetnet.jetbox.engine.JetBoxOnboarding
 import net.jetnet.jetbox.logic.JetBoxAdvancedAccess
 import net.jetnet.jetbox.logic.UpdateInfo
 import net.jetnet.jetbox.store.JetBoxBox
@@ -125,16 +126,19 @@ fun JetBoxSettingsScreen(
     update: UpdateInfo? = null,
     onCheckUpdates: () -> Unit = {},
     /** «Выйти»; `null` — пункта нет. Успех — вызывающий закрывает настройки. */
-    onSignOut: (suspend () -> Result<Unit>)? = null,
+    onSignOut: (suspend (localOnly: Boolean) -> Result<Unit>)? = null,
 ) {
     val context = LocalContext.current
     var asksSignOut by rememberSaveable { mutableStateOf(false) }
     var signingOut by remember { mutableStateOf(false) }
     var signOutFailed by remember { mutableStateOf(false) }
+    /** Кабинет не отозвал устройство — предлагаем повторить или выйти только на телефоне. */
+    var revokeFailed by remember { mutableStateOf(false) }
     val signOutScope = rememberCoroutineScope()
     val signOutRow: (() -> Unit)? = if (box != null && onSignOut != null) {
         {
             signOutFailed = false
+            revokeFailed = false
             asksSignOut = true
         }
     } else {
@@ -224,18 +228,29 @@ fun JetBoxSettingsScreen(
     }
 
     if (asksSignOut && onSignOut != null) {
+        val run = { localOnly: Boolean ->
+            signingOut = true
+            signOutFailed = false
+            signOutScope.launch {
+                val result = onSignOut(localOnly)
+                signingOut = false
+                when {
+                    result.isSuccess -> {
+                        asksSignOut = false
+                        revokeFailed = false
+                    }
+                    result.exceptionOrNull() is JetBoxOnboarding.RevokeFailed -> revokeFailed = true
+                    else -> signOutFailed = true
+                }
+            }
+            Unit
+        }
         JetBoxSignOutDialog(
             signingOut = signingOut,
             failed = signOutFailed,
-            onConfirm = {
-                signingOut = true
-                signOutFailed = false
-                signOutScope.launch {
-                    val ok = onSignOut().isSuccess
-                    signingOut = false
-                    if (ok) asksSignOut = false else signOutFailed = true
-                }
-            },
+            revokeFailed = revokeFailed,
+            onConfirm = { run(false) },
+            onLocalOnly = { run(true) },
             onDismiss = { if (!signingOut) asksSignOut = false },
         )
     }
@@ -243,26 +258,46 @@ fun JetBoxSettingsScreen(
 
 /** Подтверждение «Выйти?»: пока идёт выход — кнопки заняты; неудача — строка под текстом. */
 @Composable
-internal fun JetBoxSignOutDialog(signingOut: Boolean, failed: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+internal fun JetBoxSignOutDialog(
+    signingOut: Boolean,
+    failed: Boolean,
+    revokeFailed: Boolean = false,
+    onConfirm: () -> Unit,
+    onLocalOnly: () -> Unit = {},
+    onDismiss: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.jb_sign_out_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.jb_sign_out_body))
+                Text(stringResource(if (revokeFailed) R.string.jb_sign_out_revoke_failed else R.string.jb_sign_out_body))
                 if (failed) Text(stringResource(R.string.jb_sign_out_failed), color = JetBoxTheme.colors.danger)
             }
         },
         confirmButton = {
             TextButton(onClick = onConfirm, enabled = !signingOut) {
                 Text(
-                    stringResource(if (signingOut) R.string.jb_sign_out_progress else R.string.jb_sign_out),
+                    stringResource(
+                        when {
+                            signingOut -> R.string.jb_sign_out_progress
+                            revokeFailed -> R.string.jb_sign_out_retry
+                            else -> R.string.jb_sign_out
+                        },
+                    ),
                     color = if (signingOut) JetBoxTheme.colors.muted else JetBoxTheme.colors.danger,
                 )
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !signingOut) { Text(stringResource(R.string.jb_cancel)) }
+            Row {
+                if (revokeFailed) {
+                    TextButton(onClick = onLocalOnly, enabled = !signingOut) {
+                        Text(stringResource(R.string.jb_sign_out_local_only))
+                    }
+                }
+                TextButton(onClick = onDismiss, enabled = !signingOut) { Text(stringResource(R.string.jb_cancel)) }
+            }
         },
     )
 }

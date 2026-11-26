@@ -155,4 +155,7 @@
     <string name="jb_private_dns_title">Private DNS is on</string>
     <string name="jb_private_dns_body">Your phone uses a private DNS server (%1$s). While it’s on, website addresses are looked up outside JetBox, and JetBox ad filtering doesn’t work. Turn it off: Settings → Network &amp; internet (or Connection &amp; sharing) → Private DNS → Off or Automatic.</string>
     <string name="jb_private_dns_open">Open settings</string>
+    <string name="jb_sign_out_revoke_failed">JetBox couldn’t free this phone’s spot in your account. Try again, or sign out on this phone only — your administrator will then free the spot.</string>
+    <string name="jb_sign_out_retry">Try again</string>
+    <string name="jb_sign_out_local_only">This phone only</string>
 </resources>

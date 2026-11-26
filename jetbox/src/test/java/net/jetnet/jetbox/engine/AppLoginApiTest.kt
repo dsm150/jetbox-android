@@ -191,8 +191,10 @@ class AppLoginApiTest {
         assertEquals(DeviceRevokeResult.AlreadyRevoked, api().revokeDevice("jbd_abc"))
         serve("404 Not Found")
         assertEquals(DeviceRevokeResult.Failed("HTTP 404"), api().revokeDevice("jbd_abc"))
-        serve("502 Bad Gateway")
+        serve("502 Bad Gateway", """{"error":"unavailable"}""")
         assertEquals(DeviceRevokeResult.Failed("HTTP 502"), api().revokeDevice("jbd_abc"))
+        serve("429 Too Many Requests", """{"error":"rate_limited","retry_after":30}""")
+        assertEquals(DeviceRevokeResult.Failed("HTTP 429"), api().revokeDevice("jbd_abc"))
     }
 
     @Test fun revokeDeviceNoServer() = runBlocking {

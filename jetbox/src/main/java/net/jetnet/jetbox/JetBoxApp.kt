@@ -226,8 +226,8 @@ private fun JetBoxAppContent(onboarding: JetBoxOnboarding, engine: EngineApi, pr
                     onClose = { screen = JetBoxScreen.Home },
                     update = ui.update,
                     onCheckUpdates = homeVm::checkUpdatesNow,
-                    onSignOut = {
-                        onboarding.signOut().onSuccess {
+                    onSignOut = { localOnly ->
+                        onboarding.signOut(localOnly).onSuccess {
                             homeVm.reloadBox()
                             // Форма входа — с ввода адреса, а не с «проверьте почту» прошлого входа.
                             JetBoxProcess.emailLogin(context).changeEmail()

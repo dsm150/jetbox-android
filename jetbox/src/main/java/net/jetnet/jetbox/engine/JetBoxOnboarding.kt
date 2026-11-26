@@ -251,19 +251,27 @@ class JetBoxOnboarding(
      * Неудача — ничего не забыто: туннель не остановился — [IdentityRegistration.EngineStillRunning];
      * файлы не стёрлись — ошибка движка, хранилище прежнее.
      */
-    suspend fun signOut(): Result<Unit> {
+    suspend fun signOut(localOnly: Boolean = false): Result<Unit> {
         val previous = lastJob
         dismiss()
         val job = scope.async {
             withContext(NonCancellable) { previous?.join() }
+            // Отзыв — до остановки туннеля (Кабинет доступен и через него). Не вышло — ничего не трогаем: человек решает,
+            // повторить или выйти только на телефоне.
+            if (!localOnly) revokeInCabinet()?.let { return@async Result.failure<Unit>(it) }
             forgetEverything()
         }
         lastJob = job
         return job.await()
     }
 
+    /**
+     * Кабинет не отозвал устройство (`502`, `429`, нет сети, нет ответа за [revokeTimeoutMs]) — устройство и токен живы,
+     * на телефоне ничего не стёрто. «Выйти» предлагает повторить или выйти только на телефоне (`signOut(localOnly = true)`).
+     */
+    class RevokeFailed(details: String) : Exception(details)
+
     private suspend fun forgetEverything(): Result<Unit> {
-        revokeInCabinet()
         if (engine.isRunning() || engine.state.value != VpnDisplayState.DISCONNECTED) {
             engine.stop()
             if (withTimeoutOrNull(stopTimeoutMs) { awaitStopped() } == null) {
@@ -280,16 +288,23 @@ class JetBoxOnboarding(
         return Result.success(Unit)
     }
 
-    /** Отзыв устройства в Кабинете — до остановки туннеля (через него Кабинет тоже доступен); исход не мешает выходу. */
-    private suspend fun revokeInCabinet() {
-        val token = store.appToken ?: return log("JetBox: выход — токена приложения нет (подключение по ссылке), только локально")
-        val api = login ?: return
-        val result = withTimeoutOrNull(revokeTimeoutMs) { api.revokeDevice(token) }
-        when (result) {
-            DeviceRevokeResult.Revoked -> log("JetBox: выход — Кабинет отозвал устройство, место освобождено")
-            DeviceRevokeResult.AlreadyRevoked -> log("JetBox: выход — устройство в Кабинете уже отозвано")
-            is DeviceRevokeResult.Failed -> log("JetBox: выход — Кабинет не отозвал устройство (${result.details}), выход локальный")
-            null -> log("JetBox: выход — Кабинет не ответил за ${revokeTimeoutMs / 1000} с, выход локальный")
+    /**
+     * Отзыв устройства в Кабинете по токену приложения. `null` — можно стирать: отозвано, Кабинет токена не знает (401),
+     * токена нет (подключение по ссылке или QR) или API нет. Иначе — [RevokeFailed].
+     */
+    private suspend fun revokeInCabinet(): RevokeFailed? {
+        val token = store.appToken ?: run {
+            log("JetBox: выход — токена приложения нет (подключение по ссылке), только на телефоне")
+            return null
+        }
+        val api = login ?: return null
+        return when (val result = withTimeoutOrNull(revokeTimeoutMs) { api.revokeDevice(token) }) {
+            DeviceRevokeResult.Revoked -> null.also { log("JetBox: выход — Кабинет отозвал устройство, место освобождено") }
+            DeviceRevokeResult.AlreadyRevoked -> null.also { log("JetBox: выход — Кабинет не знает токена (401), выход на телефоне") }
+            is DeviceRevokeResult.Failed -> RevokeFailed(result.details)
+                .also { log("JetBox: выход — Кабинет не отозвал устройство (${result.details}), ничего не стёрто") }
+            null -> RevokeFailed("timeout")
+                .also { log("JetBox: выход — Кабинет не ответил за ${revokeTimeoutMs / 1000} с, ничего не стёрто") }
         }
     }
 

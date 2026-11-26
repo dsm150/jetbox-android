@@ -19,8 +19,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * «Выйти» 1.0.6 (решение владельца 26.11.2026): есть токен приложения (вход по рабочей почте) — Кабинет отзывает это
- * устройство и освобождает место; отказ, нет метода, нет сети или Кабинет молчит — выход всё равно локальный.
+ * «Выйти» 1.0.6 (решение владельца 26.11.2026, контракт Кабинета db532b4): есть токен приложения (вход по рабочей
+ * почте) — Кабинет отзывает это устройство и освобождает место. 200 или 401 — выход; 502, 429, нет сети или Кабинет
+ * молчит — ничего не стёрто, человек выбирает: повторить или выйти только на телефоне (`localOnly`).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SignOutRevokeTest {
@@ -48,8 +49,8 @@ class SignOutRevokeTest {
         engine.onStop = { it.emit(VpnDisplayState.DISCONNECTED) }
     }
 
-    private fun TestScope.signOut(env: Env): Result<Unit> {
-        val r = async { env.ob.signOut() }
+    private fun TestScope.signOut(env: Env, localOnly: Boolean = false): Result<Unit> {
+        val r = async { env.ob.signOut(localOnly) }
         advanceUntilIdle()
         return r.getCompleted()
     }
@@ -65,25 +66,55 @@ class SignOutRevokeTest {
         assertFalse("токен не в журнале", env.logs.any { "jbd_secret_token" in it })
     }
 
-    @Test fun revokeFailureStillSignsOutLocally() = runTest {
-        for (r in listOf(DeviceRevokeResult.Failed("HTTP 404"), DeviceRevokeResult.Failed("UnknownHostException"),
-            DeviceRevokeResult.AlreadyRevoked)) {
+    /** 401 bad_token — Кабинет токена не знает: отзывать нечего, выход на телефоне. */
+    @Test fun unknownTokenSignsOutLocally() = runTest {
+        val env = Env(this)
+        env.api.revokeResult = DeviceRevokeResult.AlreadyRevoked
+        env.signedIn("jbd_t")
+        assertTrue(signOut(env).isSuccess)
+        assertEquals(1, env.engine.forgetCalls)
+        assertNull(env.store.currentBox)
+        assertNull(env.store.appToken)
+    }
+
+    /** 502, 429, нет сети — ничего не стёрто, туннель не тронут; «Повторить» снова идёт в Кабинет. */
+    @Test fun revokeFailureKeepsEverythingAndRetries() = runTest {
+        for (details in listOf("HTTP 502", "HTTP 429", "UnknownHostException")) {
             val env = Env(this)
-            env.api.revokeResult = r
+            env.api.revokeResult = DeviceRevokeResult.Failed(details)
             env.signedIn("jbd_t")
-            assertTrue(r.toString(), signOut(env).isSuccess)
-            assertEquals(1, env.engine.forgetCalls)
-            assertNull(env.store.currentBox)
+            val first = signOut(env)
+            assertTrue(details, first.exceptionOrNull() is JetBoxOnboarding.RevokeFailed)
+            assertEquals(0, env.engine.stopCalls)
+            assertEquals(0, env.engine.forgetCalls)
+            assertEquals("jbd_t", env.store.appToken)
+            assertEquals(VpnDisplayState.CONNECTED, env.engine.state.value)
+            env.api.revokeResult = DeviceRevokeResult.Revoked
+            assertTrue(signOut(env).isSuccess)
+            assertEquals(listOf("jbd_t", "jbd_t"), env.api.revoked)
             assertNull(env.store.appToken)
         }
     }
 
-    @Test fun silentCabinetTimesOutThenLocal() = runTest {
+    /** «Только на телефоне» — локальный выход без Кабинета; место освобождает администратор. */
+    @Test fun localOnlySkipsCabinet() = runTest {
+        val env = Env(this)
+        env.api.revokeResult = DeviceRevokeResult.Failed("HTTP 502")
+        env.signedIn("jbd_t")
+        assertTrue(signOut(env).isFailure)
+        assertTrue(signOut(env, localOnly = true).isSuccess)
+        assertEquals(listOf("jbd_t"), env.api.revoked)
+        assertEquals(1, env.engine.forgetCalls)
+        assertNull(env.store.currentBox)
+        assertNull(env.store.appToken)
+    }
+
+    @Test fun silentCabinetTimesOutAndAsks() = runTest {
         val env = Env(this)
         env.api.revokeHangs = true
         env.signedIn("jbd_t")
-        assertTrue(signOut(env).isSuccess)
-        assertEquals(1, env.engine.forgetCalls)
+        assertTrue(signOut(env).exceptionOrNull() is JetBoxOnboarding.RevokeFailed)
+        assertEquals(0, env.engine.forgetCalls)
         assertTrue(env.logs.any { "не ответил" in it })
     }
 
