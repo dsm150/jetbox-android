@@ -42,14 +42,21 @@ interface AppLoginApi {
 
     /**
      * «Удалить аккаунт» (Google Play: аккаунт создаётся в приложении — удаление в приложении; решение владельца 26.11.2026):
-     * `POST account/delete`, Bearer — все устройства человека отключаются, вход по почте закрывается.
+     * `POST account/delete`, Bearer — удаление полное: человек снят целиком (все устройства, вход в приложение и на сайт).
+     * `409 last_owner` — единственный владелец клиента: ничего не удалено, удалить — через поддержку.
      */
     suspend fun deleteAccount(appToken: String): AccountDeleteResult = AccountDeleteResult.Failed("not supported")
 }
 
 sealed class AccountDeleteResult {
-    /** `200 {"ok":true}`: доступ снят всем устройствам человека, вход закрыт. */
+    /** `200 {"ok":true}`: человек снят целиком — все устройства, вход в приложение и на сайт. */
     data object Deleted : AccountDeleteResult()
+
+    /**
+     * `409 {"error":"last_owner","support":"…"}`: единственный владелец клиента в Личном кабинете — ничего не удалено.
+     * [support] — адрес поддержки, если Кабинет его прислал.
+     */
+    data class LastOwner(val support: String?) : AccountDeleteResult()
 
     /** `401 unauthorized`: токен погашен — устройство уже отключено (удаление прошло раньше или отключили в Кабинете). */
     data object Unauthorized : AccountDeleteResult()
@@ -205,6 +212,9 @@ class HttpAppLoginApi(
             is Reply.Status -> when (r.code) {
                 in 200..299 -> AccountDeleteResult.Deleted
                 401 -> AccountDeleteResult.Unauthorized
+                409 -> jsonOf(r.body)?.takeIf { it.optString("error") == ERROR_LAST_OWNER }
+                    ?.let { AccountDeleteResult.LastOwner(it.optString("support").trim().takeIf(String::isNotEmpty)) }
+                    ?: AccountDeleteResult.Failed("HTTP 409")
                 else -> AccountDeleteResult.Failed("HTTP ${r.code}")
             }
         }
@@ -269,6 +279,7 @@ class HttpAppLoginApi(
     companion object {
         const val PLATFORM = "android"
         const val ERROR_NOT_AVAILABLE = "not_available"
+        const val ERROR_LAST_OWNER = "last_owner"
         const val REASON_USED = "used"
 
         /** Отзыв устройства по токену приложения (контракт Кабинета db532b4). */

@@ -164,7 +164,10 @@
     <string name="jb_sign_out_local_only">Только на телефоне</string>
     <string name="jb_delete_account">Удалить аккаунт</string>
     <string name="jb_delete_account_title">Удалить аккаунт?</string>
-    <string name="jb_delete_account_body">Все ваши устройства будут отключены, а вход по рабочей почте закроется. Вернуть доступ может только администратор.</string>
+    <string name="jb_delete_account_body">Все ваши устройства будут отключены, учётная запись удалится целиком — вход в приложение и в Личный кабинет закроется. Вернуть доступ может только администратор.</string>
+    <string name="jb_delete_account_last_owner">Вы — единственный владелец в Личном кабинете JetBox. Чтобы удалить аккаунт, напишите в поддержку: %1$s</string>
+    <string name="jb_delete_account_last_owner_no_address">Вы — единственный владелец в Личном кабинете JetBox. Чтобы удалить аккаунт, напишите в поддержку JetBox.</string>
+    <string name="jb_delete_account_write">Написать</string>
     <string name="jb_delete_account_progress">Удаляем…</string>
     <string name="jb_delete_account_failed">Не получилось удалить аккаунт: JetBox не ответил. Попробуйте ещё раз.</string>
 </resources>

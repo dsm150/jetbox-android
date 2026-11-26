@@ -87,6 +87,21 @@ class DeleteAccountTest {
         }
     }
 
+    /** 409 last_owner — единственный владелец клиента: ничего не удалено, на телефоне всё на месте, адрес поддержки — наружу. */
+    @Test fun lastOwnerKeepsEverything() = runTest {
+        for (support in listOf("support@jet-net.net", null)) {
+            val env = Env(this)
+            env.api.deleteResult = AccountDeleteResult.LastOwner(support)
+            env.signedIn("jbd_t")
+            val error = delete(env).exceptionOrNull()
+            assertTrue(error is JetBoxOnboarding.LastOwner)
+            assertEquals(support, (error as JetBoxOnboarding.LastOwner).support)
+            assertEquals(0, env.engine.stopCalls)
+            assertEquals(0, env.engine.forgetCalls)
+            assertEquals("jbd_t", env.store.appToken)
+        }
+    }
+
     /** Подключение по ссылке или QR — токена нет: удаление в Кабинет не идёт (у них веб-страница). */
     @Test fun noTokenNoCall() = runTest {
         val env = Env(this)

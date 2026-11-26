@@ -207,6 +207,12 @@ class AppLoginApiTest {
         assertEquals(AccountDeleteResult.Unauthorized, api().deleteAccount("jbd_abc"))
         serve("429 Too Many Requests")
         assertEquals(AccountDeleteResult.Failed("HTTP 429"), api().deleteAccount("jbd_abc"))
+        serve("409 Conflict", """{"error":"last_owner","support":"support@jet-net.net"}""")
+        assertEquals(AccountDeleteResult.LastOwner("support@jet-net.net"), api().deleteAccount("jbd_abc"))
+        serve("409 Conflict", """{"error":"last_owner"}""")
+        assertEquals(AccountDeleteResult.LastOwner(null), api().deleteAccount("jbd_abc"))
+        serve("409 Conflict", """{"error":"other"}""")
+        assertEquals(AccountDeleteResult.Failed("HTTP 409"), api().deleteAccount("jbd_abc"))
         serve("502 Bad Gateway", """{"error":"unavailable"}""")
         assertEquals(AccountDeleteResult.Failed("HTTP 502"), api().deleteAccount("jbd_abc"))
     }

@@ -160,7 +160,10 @@
     <string name="jb_sign_out_local_only">This phone only</string>
     <string name="jb_delete_account">Delete account</string>
     <string name="jb_delete_account_title">Delete account?</string>
-    <string name="jb_delete_account_body">All your devices will be disconnected, and work email sign-in will be closed. Only your administrator can restore access.</string>
+    <string name="jb_delete_account_body">All your devices will be disconnected and your account will be deleted entirely — sign-in to the app and to your JetBox account will be closed. Only your administrator can restore access.</string>
+    <string name="jb_delete_account_last_owner">You’re the only owner in your JetBox account. To delete your account, contact support: %1$s</string>
+    <string name="jb_delete_account_last_owner_no_address">You’re the only owner in your JetBox account. To delete your account, contact JetBox support.</string>
+    <string name="jb_delete_account_write">Write</string>
     <string name="jb_delete_account_progress">Deleting…</string>
     <string name="jb_delete_account_failed">Couldn’t delete the account: JetBox didn’t respond. Try again.</string>
 </resources>

@@ -138,11 +138,15 @@ fun JetBoxSettingsScreen(
     var asksDelete by rememberSaveable { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var deleteFailed by remember { mutableStateOf(false) }
+    /** `409 last_owner`: единственный владелец клиента — удалить только через поддержку; адрес — если Кабинет прислал. */
+    var lastOwner by remember { mutableStateOf(false) }
+    var lastOwnerSupport by remember { mutableStateOf<String?>(null) }
     val deleteRow: (() -> Unit)? = when {
         box == null -> null
         onDeleteAccount != null -> {
             {
                 deleteFailed = false
+                lastOwner = false
                 asksDelete = true
             }
         }
@@ -254,15 +258,26 @@ fun JetBoxSettingsScreen(
         JetBoxDeleteAccountDialog(
             deleting = deleting,
             failed = deleteFailed,
+            lastOwner = lastOwner,
+            support = lastOwnerSupport,
             onConfirm = {
                 deleting = true
                 deleteFailed = false
                 signOutScope.launch {
-                    val ok = onDeleteAccount().isSuccess
+                    val result = onDeleteAccount()
                     deleting = false
-                    if (ok) asksDelete = false else deleteFailed = true
+                    val error = result.exceptionOrNull()
+                    when {
+                        result.isSuccess -> asksDelete = false
+                        error is JetBoxOnboarding.LastOwner -> {
+                            lastOwner = true
+                            lastOwnerSupport = error.support
+                        }
+                        else -> deleteFailed = true
+                    }
                 }
             },
+            onWriteSupport = { address -> context.openUrl("mailto:$address") },
             onDismiss = { if (!deleting) asksDelete = false },
         )
     }
@@ -299,26 +314,49 @@ fun JetBoxSettingsScreen(
 /** Подтверждение «Выйти?»: пока идёт выход — кнопки заняты; неудача — строка под текстом. */
 /** «Удалить аккаунт?» — обязательное подтверждение (решение владельца 26.11.2026); неудача — строка под текстом. */
 @Composable
-internal fun JetBoxDeleteAccountDialog(deleting: Boolean, failed: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+internal fun JetBoxDeleteAccountDialog(
+    deleting: Boolean,
+    failed: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    lastOwner: Boolean = false,
+    support: String? = null,
+    onWriteSupport: (String) -> Unit = {},
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.jb_delete_account_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.jb_delete_account_body))
+                Text(
+                    when {
+                        !lastOwner -> stringResource(R.string.jb_delete_account_body)
+                        support != null -> stringResource(R.string.jb_delete_account_last_owner, support)
+                        else -> stringResource(R.string.jb_delete_account_last_owner_no_address)
+                    },
+                )
                 if (failed) Text(stringResource(R.string.jb_delete_account_failed), color = JetBoxTheme.colors.danger)
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm, enabled = !deleting) {
-                Text(
-                    stringResource(if (deleting) R.string.jb_delete_account_progress else R.string.jb_delete_account),
-                    color = if (deleting) JetBoxTheme.colors.muted else JetBoxTheme.colors.danger,
-                )
+            if (lastOwner) {
+                // Единственный владелец: удалить нельзя — только написать в поддержку (если адрес есть).
+                if (support != null) {
+                    TextButton(onClick = { onWriteSupport(support) }) { Text(stringResource(R.string.jb_delete_account_write)) }
+                }
+            } else {
+                TextButton(onClick = onConfirm, enabled = !deleting) {
+                    Text(
+                        stringResource(if (deleting) R.string.jb_delete_account_progress else R.string.jb_delete_account),
+                        color = if (deleting) JetBoxTheme.colors.muted else JetBoxTheme.colors.danger,
+                    )
+                }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !deleting) { Text(stringResource(R.string.jb_cancel)) }
+            TextButton(onClick = onDismiss, enabled = !deleting) {
+                Text(stringResource(if (lastOwner) R.string.jb_close else R.string.jb_cancel))
+            }
         },
     )
 }
