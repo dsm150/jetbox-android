@@ -127,8 +127,30 @@ fun JetBoxSettingsScreen(
     onCheckUpdates: () -> Unit = {},
     /** «Выйти»; `null` — пункта нет. Успех — вызывающий закрывает настройки. */
     onSignOut: (suspend (localOnly: Boolean) -> Result<Unit>)? = null,
+    /**
+     * «Удалить аккаунт» (вход по рабочей почте — есть токен приложения); `null` — вместо диалога веб-страница
+     * [deleteAccountUrl] (подключение по ссылке или QR). Успех — вызывающий закрывает настройки.
+     */
+    onDeleteAccount: (suspend () -> Result<Unit>)? = null,
+    deleteAccountUrl: String? = null,
 ) {
     val context = LocalContext.current
+    var asksDelete by rememberSaveable { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    var deleteFailed by remember { mutableStateOf(false) }
+    val deleteRow: (() -> Unit)? = when {
+        box == null -> null
+        onDeleteAccount != null -> {
+            {
+                deleteFailed = false
+                asksDelete = true
+            }
+        }
+        deleteAccountUrl != null -> {
+            { context.openUrl(deleteAccountUrl) }
+        }
+        else -> null
+    }
     var asksSignOut by rememberSaveable { mutableStateOf(false) }
     var signingOut by remember { mutableStateOf(false) }
     var signOutFailed by remember { mutableStateOf(false) }
@@ -223,8 +245,26 @@ fun JetBoxSettingsScreen(
                 },
                 onClose = onClose,
                 onSignOut = signOutRow,
+                onDeleteAccount = deleteRow,
             )
         }
+    }
+
+    if (asksDelete && onDeleteAccount != null) {
+        JetBoxDeleteAccountDialog(
+            deleting = deleting,
+            failed = deleteFailed,
+            onConfirm = {
+                deleting = true
+                deleteFailed = false
+                signOutScope.launch {
+                    val ok = onDeleteAccount().isSuccess
+                    deleting = false
+                    if (ok) asksDelete = false else deleteFailed = true
+                }
+            },
+            onDismiss = { if (!deleting) asksDelete = false },
+        )
     }
 
     if (asksSignOut && onSignOut != null) {
@@ -257,6 +297,32 @@ fun JetBoxSettingsScreen(
 }
 
 /** Подтверждение «Выйти?»: пока идёт выход — кнопки заняты; неудача — строка под текстом. */
+/** «Удалить аккаунт?» — обязательное подтверждение (решение владельца 26.11.2026); неудача — строка под текстом. */
+@Composable
+internal fun JetBoxDeleteAccountDialog(deleting: Boolean, failed: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.jb_delete_account_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.jb_delete_account_body))
+                if (failed) Text(stringResource(R.string.jb_delete_account_failed), color = JetBoxTheme.colors.danger)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !deleting) {
+                Text(
+                    stringResource(if (deleting) R.string.jb_delete_account_progress else R.string.jb_delete_account),
+                    color = if (deleting) JetBoxTheme.colors.muted else JetBoxTheme.colors.danger,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !deleting) { Text(stringResource(R.string.jb_cancel)) }
+        },
+    )
+}
+
 @Composable
 internal fun JetBoxSignOutDialog(
     signingOut: Boolean,
@@ -318,6 +384,7 @@ fun JetBoxSettingsLayout(
     updateVersion: String? = null,
     onUpdate: () -> Unit = {},
     onSignOut: (() -> Unit)? = null,
+    onDeleteAccount: (() -> Unit)? = null,
 ) {
     val c = JetBoxTheme.colors
     JBPage(
@@ -392,6 +459,14 @@ fun JetBoxSettingsLayout(
             JBSection {
                 JBListRow(onClick = onSignOut) {
                     Text(stringResource(R.string.jb_sign_out), style = JBType.body, color = c.danger)
+                }
+            }
+        }
+
+        if (onDeleteAccount != null) {
+            JBSection {
+                JBListRow(onClick = onDeleteAccount) {
+                    Text(stringResource(R.string.jb_delete_account), style = JBType.body, color = c.danger)
                 }
             }
         }

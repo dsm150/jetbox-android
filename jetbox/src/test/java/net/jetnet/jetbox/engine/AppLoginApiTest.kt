@@ -197,6 +197,20 @@ class AppLoginApiTest {
         assertEquals(DeviceRevokeResult.Failed("HTTP 429"), api().revokeDevice("jbd_abc"))
     }
 
+    /** «Удалить аккаунт» — account/delete, Bearer (06-cabinet.md). */
+    @Test fun deleteAccountSendsBearer() = runBlocking {
+        serve("200 OK", """{"ok":true}""")
+        assertEquals(AccountDeleteResult.Deleted, api().deleteAccount("jbd_abc"))
+        assertEquals("POST /api/app/v1/account/delete", paths.last())
+        assertEquals("Bearer jbd_abc", auth.last())
+        serve("401 Unauthorized", """{"error":"unauthorized"}""")
+        assertEquals(AccountDeleteResult.Unauthorized, api().deleteAccount("jbd_abc"))
+        serve("429 Too Many Requests")
+        assertEquals(AccountDeleteResult.Failed("HTTP 429"), api().deleteAccount("jbd_abc"))
+        serve("502 Bad Gateway", """{"error":"unavailable"}""")
+        assertEquals(AccountDeleteResult.Failed("HTTP 502"), api().deleteAccount("jbd_abc"))
+    }
+
     @Test fun revokeDeviceNoServer() = runBlocking {
         server.close()
         assertTrue(api().revokeDevice("jbd_abc") is DeviceRevokeResult.Failed)

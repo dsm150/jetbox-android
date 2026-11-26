@@ -162,4 +162,9 @@
     <string name="jb_sign_out_revoke_failed">JetBox не смог освободить место этого телефона в Личном кабинете. Повторите — или выйдите только на телефоне: тогда место освободит администратор.</string>
     <string name="jb_sign_out_retry">Повторить</string>
     <string name="jb_sign_out_local_only">Только на телефоне</string>
+    <string name="jb_delete_account">Удалить аккаунт</string>
+    <string name="jb_delete_account_title">Удалить аккаунт?</string>
+    <string name="jb_delete_account_body">Все ваши устройства будут отключены, а вход по рабочей почте закроется. Вернуть доступ может только администратор.</string>
+    <string name="jb_delete_account_progress">Удаляем…</string>
+    <string name="jb_delete_account_failed">Не получилось удалить аккаунт: JetBox не ответил. Попробуйте ещё раз.</string>
 </resources>

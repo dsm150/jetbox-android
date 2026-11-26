@@ -30,6 +30,12 @@ object JetBoxConfig {
      */
     const val LINK_SIGNED = true
 
+    /**
+     * Веб-страница удаления аккаунта — для подключённых по ссылке или QR (токена приложения нет) и для анкеты Google Play.
+     * Адрес — от руководителя JetBox (страница на box.jet-net.net делается); до его письма — предварительный.
+     */
+    const val ACCOUNT_DELETE_URL = "https://box.jet-net.net/account/delete"
+
     const val PRIVACY_POLICY_URL = "https://jet-net.net/privacy"
     const val SITE_URL = "https://jet-net.net"
 

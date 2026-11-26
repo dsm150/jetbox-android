@@ -234,6 +234,18 @@ private fun JetBoxAppContent(onboarding: JetBoxOnboarding, engine: EngineApi, pr
                             screen = JetBoxScreen.Home
                         }
                     },
+                    onDeleteAccount = if (onboarding.hasAppToken) {
+                        {
+                            onboarding.deleteAccount().onSuccess {
+                                homeVm.reloadBox()
+                                JetBoxProcess.emailLogin(context).changeEmail()
+                                screen = JetBoxScreen.Home
+                            }
+                        }
+                    } else {
+                        null
+                    },
+                    deleteAccountUrl = net.jetnet.jetbox.link.JetBoxConfig.ACCOUNT_DELETE_URL,
                 )
             }
         }

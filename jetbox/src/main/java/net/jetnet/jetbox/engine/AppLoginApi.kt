@@ -39,6 +39,23 @@ interface AppLoginApi {
 
     /** Отозвать устройство этого токена в Кабинете («Выйти»). Не умеет — [DeviceRevokeResult.Failed]. */
     suspend fun revokeDevice(appToken: String): DeviceRevokeResult = DeviceRevokeResult.Failed("not supported")
+
+    /**
+     * «Удалить аккаунт» (Google Play: аккаунт создаётся в приложении — удаление в приложении; решение владельца 26.11.2026):
+     * `POST account/delete`, Bearer — все устройства человека отключаются, вход по почте закрывается.
+     */
+    suspend fun deleteAccount(appToken: String): AccountDeleteResult = AccountDeleteResult.Failed("not supported")
+}
+
+sealed class AccountDeleteResult {
+    /** `200 {"ok":true}`: доступ снят всем устройствам человека, вход закрыт. */
+    data object Deleted : AccountDeleteResult()
+
+    /** `401 unauthorized`: токен погашен — устройство уже отключено (удаление прошло раньше или отключили в Кабинете). */
+    data object Unauthorized : AccountDeleteResult()
+
+    /** Сеть, лимит (`429`), `502` NetBird не ответил — на телефоне ничего не стирать, предложить повторить. */
+    data class Failed(val details: String) : AccountDeleteResult()
 }
 
 sealed class DeviceRevokeResult {
@@ -182,6 +199,16 @@ class HttpAppLoginApi(
             }
         }
 
+    override suspend fun deleteAccount(appToken: String): AccountDeleteResult =
+        when (val r = post(ACCOUNT_DELETE_PATH, JSONObject(), bearer = appToken)) {
+            is Reply.NoNetwork -> AccountDeleteResult.Failed(r.details)
+            is Reply.Status -> when (r.code) {
+                in 200..299 -> AccountDeleteResult.Deleted
+                401 -> AccountDeleteResult.Unauthorized
+                else -> AccountDeleteResult.Failed("HTTP ${r.code}")
+            }
+        }
+
     private fun jsonOf(body: String?): JSONObject? = body?.let { runCatching { JSONObject(it) }.getOrNull() }
 
     private sealed class Reply {
@@ -246,6 +273,9 @@ class HttpAppLoginApi(
 
         /** Отзыв устройства по токену приложения (контракт Кабинета db532b4). */
         const val REVOKE_PATH = "device/revoke"
+
+        /** Удаление аккаунта по токену приложения (06-cabinet.md, «API приложения: вход по email»). */
+        const val ACCOUNT_DELETE_PATH = "account/delete"
         const val TIMEOUT_MS = 15_000
         const val MAX_BYTES = 64 * 1024
     }

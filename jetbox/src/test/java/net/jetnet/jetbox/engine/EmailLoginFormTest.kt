@@ -37,6 +37,14 @@ class FakeLoginApi : AppLoginApi {
     /** Ответ отзыва задерживается навсегда — проверка таймаута выхода. */
     var revokeHangs = false
 
+    val deletes = mutableListOf<String>()
+    var deleteResult: AccountDeleteResult = AccountDeleteResult.Deleted
+
+    override suspend fun deleteAccount(appToken: String): AccountDeleteResult {
+        deletes += appToken
+        return deleteResult
+    }
+
     override suspend fun revokeDevice(appToken: String): DeviceRevokeResult {
         revoked += appToken
         if (revokeHangs) kotlinx.coroutines.awaitCancellation()

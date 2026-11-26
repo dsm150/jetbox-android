@@ -158,4 +158,9 @@
     <string name="jb_sign_out_revoke_failed">JetBox couldn’t free this phone’s spot in your account. Try again, or sign out on this phone only — your administrator will then free the spot.</string>
     <string name="jb_sign_out_retry">Try again</string>
     <string name="jb_sign_out_local_only">This phone only</string>
+    <string name="jb_delete_account">Delete account</string>
+    <string name="jb_delete_account_title">Delete account?</string>
+    <string name="jb_delete_account_body">All your devices will be disconnected, and work email sign-in will be closed. Only your administrator can restore access.</string>
+    <string name="jb_delete_account_progress">Deleting…</string>
+    <string name="jb_delete_account_failed">Couldn’t delete the account: JetBox didn’t respond. Try again.</string>
 </resources>

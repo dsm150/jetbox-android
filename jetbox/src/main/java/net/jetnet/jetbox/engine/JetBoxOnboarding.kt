@@ -265,6 +265,32 @@ class JetBoxOnboarding(
         return job.await()
     }
 
+    /** Вход был по рабочей почте — есть токен приложения: «Удалить аккаунт» идёт в Кабинет, иначе — веб-страница. */
+    val hasAppToken: Boolean get() = store.appToken != null
+
+    /**
+     * «Удалить аккаунт» (решение владельца 26.11.2026, правило Google Play): `account/delete` с токеном приложения — все
+     * устройства человека отключаются, вход закрыт; затем выход на телефоне ([signOut] без повторного отзыва). `401` —
+     * токен уже погашен — тоже выходим. Сеть, `429`, `502` — [AccountDeleteFailed], на телефоне ничего не стёрто.
+     * Токена нет — [IllegalStateException]: такой человек удаляет аккаунт на веб-странице.
+     */
+    suspend fun deleteAccount(): Result<Unit> {
+        val token = store.appToken ?: return Result.failure(IllegalStateException("no app token"))
+        val api = login ?: return Result.failure(IllegalStateException("no login api"))
+        when (val r = api.deleteAccount(token)) {
+            AccountDeleteResult.Deleted -> log("JetBox: удаление аккаунта — Кабинет снял доступ всем устройствам")
+            AccountDeleteResult.Unauthorized -> log("JetBox: удаление аккаунта — токен уже погашен (401), выходим")
+            is AccountDeleteResult.Failed -> {
+                log("JetBox: удаление аккаунта не удалось: ${r.details}")
+                return Result.failure(AccountDeleteFailed(r.details))
+            }
+        }
+        return signOut(localOnly = true)
+    }
+
+    /** Кабинет не удалил аккаунт (сеть, `429`, `502`) — на телефоне ничего не стёрто, можно повторить. */
+    class AccountDeleteFailed(details: String) : Exception(details)
+
     /**
      * Кабинет не отозвал устройство (`502`, `429`, нет сети, нет ответа за [revokeTimeoutMs]) — устройство и токен живы,
      * на телефоне ничего не стёрто. «Выйти» предлагает повторить или выйти только на телефоне (`signOut(localOnly = true)`).
