@@ -370,14 +370,15 @@ private fun PrivateDnsDialog(hostname: String, onOpenSettings: () -> Unit, onDis
 }
 
 /**
- * Настройки, где живёт «Частный DNS»: прямого экрана в Android нет — «Сеть и интернет» (у MIUI — «Подключение и общий
- * доступ»), иначе общие настройки.
+ * Настройки, где живёт «Частный DNS»: прямого экрана в Android нет — «Сеть и интернет» (там «Дополнительно → Частный
+ * DNS»). У Xiaomi (MIUI) этот же интент открывает «Дополнительные функции» без частного DNS (проверено на Mi Note 3,
+ * 26.11.2026) — там главные настройки, путь из диалога начинается с них.
  */
 private fun openNetworkSettings(context: Context) {
-    val intents = listOf(
-        android.content.Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS),
-        android.content.Intent(android.provider.Settings.ACTION_SETTINGS),
-    )
+    val main = android.content.Intent(android.provider.Settings.ACTION_SETTINGS)
+    val network = android.content.Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS)
+    val miui = android.os.Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)
+    val intents = if (miui) listOf(main) else listOf(network, main)
     for (intent in intents) {
         intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         if (runCatching { context.startActivity(intent) }.isSuccess) return
