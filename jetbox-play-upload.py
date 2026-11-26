@@ -12,6 +12,11 @@ Google Play Developer API для JetBox (net.jetnet.jetbox) — без библ�
 
 Ключ — ~/.config/jetbox-android/play.json (0600) или JETBOX_PLAY_KEY. Токен и ключ не печатаются.
 Выпуск в Play — только по слову владельца.
+
+Каждый commit правки — с changesNotSentForReview=true: иначе commit отправляет на проверку в Google ВСЁ, что лежит в
+приложении, включая черновики консоли (26.11.2026: загрузка бандла 20 в библиотеку отправила на автопроверку черновик
+выпуска 19, который владелец решил не выпускать; руководитель отозвал его до Google). Отправка на проверку — только
+в консоли, по слову владельца.
 """
 import argparse
 import base64
@@ -112,9 +117,9 @@ def upload(play: Play, aab: str, notes_ru: str, track: str, commit: bool):
         play.call("POST", f"{API}/edits/{edit}:validate")
         print(f"трек {track}: выпуск {code}, проверка правки пройдена")
         if commit:
-            r = play.call("POST", f"{API}/edits/{edit}:commit")
+            r = play.call("POST", f"{API}/edits/{edit}:commit?changesNotSentForReview=true")
             done = True
-            print(f"правка {r.get('id')} применена — выпуск отправлен в Google на проверку")
+            print(f"правка {r.get('id')} применена — выпуск НЕ отправлен на проверку: отправить в консоли")
         else:
             print("без --commit: правка не применяется")
     finally:
@@ -129,7 +134,7 @@ def library(play: Play, aab: str):
         bundle = play.call("POST", f"{UPLOAD}/edits/{edit}/bundles?uploadType=media", data=open(aab, "rb").read(),
                            ctype="application/octet-stream")
         print(f"бандл загружен: versionCode {bundle['versionCode']}, sha256 {bundle.get('sha256')}")
-        play.call("POST", f"{API}/edits/{edit}:commit")
+        play.call("POST", f"{API}/edits/{edit}:commit?changesNotSentForReview=true")
         done = True
         print("правка применена — бандл в библиотеке; выпуск собирается в консоли")
     finally:
