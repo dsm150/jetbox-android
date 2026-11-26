@@ -170,4 +170,6 @@
     <string name="jb_delete_account_write">Написать</string>
     <string name="jb_delete_account_progress">Удаляем…</string>
     <string name="jb_delete_account_failed">Не получилось удалить аккаунт: JetBox не ответил. Попробуйте ещё раз.</string>
+    <string name="jb_account_deleted_title">Аккаунт удалён</string>
+    <string name="jb_account_deleted_body">Все ваши устройства отключены, вход в приложение и в Личный кабинет закрыт.</string>
 </resources>

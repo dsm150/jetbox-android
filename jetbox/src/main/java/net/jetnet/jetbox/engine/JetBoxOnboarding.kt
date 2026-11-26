@@ -279,7 +279,8 @@ class JetBoxOnboarding(
         val api = login ?: return Result.failure(IllegalStateException("no login api"))
         when (val r = api.deleteAccount(token)) {
             AccountDeleteResult.Deleted -> log("JetBox: удаление аккаунта — Кабинет удалил человека целиком")
-            AccountDeleteResult.Unauthorized -> log("JetBox: удаление аккаунта — токен уже погашен (401), выходим")
+            // 401 сразу после нашего же запроса — обычно аккаунт уже удалён (первый ответ потерялся при обрыве туннеля).
+            AccountDeleteResult.Unauthorized -> log("JetBox: удаление аккаунта — Кабинет токен не знает (401): аккаунт уже удалён, выходим")
             is AccountDeleteResult.LastOwner -> {
                 log("JetBox: удаление аккаунта — единственный владелец клиента (409), ничего не удалено")
                 return Result.failure(LastOwner(r.support))

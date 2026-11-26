@@ -244,9 +244,18 @@ class HttpAppLoginApi(
             conn.setRequestProperty("Accept", "application/json")
             bearer?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
             val bytes = json.toString().toByteArray(Charsets.UTF_8)
-            // Без setFixedLengthStreamingMode: в потоковом режиме JDK при 401 не отдаёт тело (attempts_left).
+            // Отзыв и удаление (с Bearer) — неидемпотентны: без тихого повтора. HttpURLConnection Android (okhttp) сам
+            // повторяет POST с буферизованным телом при обрыве соединения — так и было на приёмке 26.11: удаление сняло
+            // пир телефона, туннель оборвался, повтор ушёл напрямую погашенным токеном → 401. Потоковое тело повторить
+            // нельзя. Для входа — по-прежнему буфер: в потоковом режиме JDK при 401 не отдаёт тело (attempts_left).
+            if (bearer != null) conn.setFixedLengthStreamingMode(bytes.size)
             conn.outputStream.use { it.write(bytes) }
-            val code = conn.responseCode
+            val code = try {
+                conn.responseCode
+            } catch (e: java.net.HttpRetryException) {
+                // JDK в потоковом режиме не читает ответ 401 — код есть в исключении, тело нам не нужно.
+                return@withContext Reply.Status(e.responseCode(), null)
+            }
             // Тело нужно только у 200 (подключение), 401 (остаток попыток), 409 и 410 (вид отказа).
             val body = when (code) {
                 200 -> conn.inputStream.use(::readLimited)

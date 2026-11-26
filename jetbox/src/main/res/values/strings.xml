@@ -166,4 +166,6 @@
     <string name="jb_delete_account_write">Write</string>
     <string name="jb_delete_account_progress">Deleting…</string>
     <string name="jb_delete_account_failed">Couldn’t delete the account: JetBox didn’t respond. Try again.</string>
+    <string name="jb_account_deleted_title">Account deleted</string>
+    <string name="jb_account_deleted_body">All your devices are disconnected, and sign-in to the app and your JetBox account is closed.</string>
 </resources>

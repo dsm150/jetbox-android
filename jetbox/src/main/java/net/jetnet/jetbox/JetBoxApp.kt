@@ -15,6 +15,10 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -192,6 +196,7 @@ private fun JetBoxAppContent(onboarding: JetBoxOnboarding, engine: EngineApi, pr
     val ui by homeVm.ui.collectAsStateWithLifecycle()
     var screen by rememberSaveable { mutableStateOf(JetBoxScreen.Home) }
     val presenting = step != Step.Idle
+    var accountDeleted by rememberSaveable { mutableStateOf(false) }
 
     // Сценарий мог прописать или переименовать JetBox — главный экран и настройки читают свежий.
     LaunchedEffect(step) { homeVm.reloadBox() }
@@ -199,6 +204,18 @@ private fun JetBoxAppContent(onboarding: JetBoxOnboarding, engine: EngineApi, pr
     LaunchedEffect(presenting) { if (presenting) screen = JetBoxScreen.Home }
 
     NotificationPermissionEffect(protected = JetBoxNotifications.isTrigger(engineState, step), kv = prefs)
+
+    // «Аккаунт удалён» — после удаления (и после 401: аккаунт уже снят, ответ на первый запрос потерялся).
+    if (accountDeleted) {
+        AlertDialog(
+            onDismissRequest = { accountDeleted = false },
+            title = { Text(stringResource(R.string.jb_account_deleted_title)) },
+            text = { Text(stringResource(R.string.jb_account_deleted_body)) },
+            confirmButton = {
+                TextButton(onClick = { accountDeleted = false }) { Text(stringResource(R.string.jb_done)) }
+            },
+        )
+    }
 
     Box(Modifier.fillMaxSize()) {
         AnimatedContent(
@@ -240,6 +257,7 @@ private fun JetBoxAppContent(onboarding: JetBoxOnboarding, engine: EngineApi, pr
                                 homeVm.reloadBox()
                                 JetBoxProcess.emailLogin(context).changeEmail()
                                 screen = JetBoxScreen.Home
+                                accountDeleted = true
                             }
                         }
                     } else {
