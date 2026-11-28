@@ -102,7 +102,7 @@ fun homeViewModelFactory(context: Context): ViewModelProvider.Factory {
                 probe = HomeProbeRunner(),
                 updates = JetBoxProcess.updates(app),
                 privateDns = { net.jetnet.jetbox.engine.PrivateDnsReader.hostname(app) },
-                dnsCanary = systemDnsCanary()::check,
+                dnsCanary = systemDnsCanary(app)::check,
             )
         }
     }
@@ -404,7 +404,19 @@ private fun DnsBypassDialog(onOpenSettings: () -> Unit, onDismiss: () -> Unit) {
  * Боевая канарейка: (а) A-запрос прямо в DNS дома по mesh-адресу (UDP 53, через туннель — приложение из своего VPN не
  * исключено); (б) системный резолвер, как браузер — `InetAddress.getAllByName`, не дольше 3 с.
  */
-private fun systemDnsCanary() = net.jetnet.jetbox.logic.DnsCanary(
+/**
+ * Сеть VPN JetBox, если поднята: системный резолвер спрашиваем через неё ([android.net.Network.getAllByName]) — так
+ * проверка не зависит от того, идёт ли трафик самого приложения в туннель. `null` — VPN нет, спрашиваем как обычно.
+ */
+@Suppress("DEPRECATION")
+private fun vpnNetwork(context: Context): android.net.Network? {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return null
+    return runCatching {
+        cm.allNetworks.firstOrNull { cm.getNetworkCapabilities(it)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true }
+    }.getOrNull()
+}
+
+private fun systemDnsCanary(context: Context) = net.jetnet.jetbox.logic.DnsCanary(
     name = net.jetnet.jetbox.link.JetBoxConfig.DNS_CHECK_NAME,
     boxQuery = { ip, name ->
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -415,7 +427,11 @@ private fun systemDnsCanary() = net.jetnet.jetbox.logic.DnsCanary(
         kotlinx.coroutines.coroutineScope {
             val lookup = async(kotlinx.coroutines.Dispatchers.IO) {
                 try {
-                    net.jetnet.jetbox.logic.SystemAnswer.Addresses(java.net.InetAddress.getAllByName(name).mapNotNull { it.hostAddress })
+                    val vpn = vpnNetwork(context)
+                    // Нет доступа к сети VPN (например, приложение вне своего туннеля) — обычный резолвер.
+                    val found = vpn?.let { n -> runCatching { n.getAllByName(name) }.getOrElse { e -> if (e is java.net.UnknownHostException) throw e else null } }
+                        ?: java.net.InetAddress.getAllByName(name)
+                    net.jetnet.jetbox.logic.SystemAnswer.Addresses(found.mapNotNull { it.hostAddress })
                 } catch (e: java.net.UnknownHostException) {
                     net.jetnet.jetbox.logic.SystemAnswer.NotFound
                 } catch (e: Exception) {
