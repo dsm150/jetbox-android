@@ -162,7 +162,7 @@ object JetBoxProcess {
             route = ui.route?.name?.lowercase()?.takeIf { connected },
             uptime = ui.connectedSinceMillis?.takeIf { connected }?.let { uptimeText(System.currentTimeMillis() - it) },
             exit = ui.selectedExit,
-            exitOff = ui.box != null && ui.selectedExit == null,
+            exitOff = if (connected) ui.selectedExit == null else null,
             dnsCheck = ui.dnsCheck,
             privateDns = ui.privateDnsHost,
             log = JetBoxLog.last(Diagnostics.LOG_LINES),

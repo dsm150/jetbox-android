@@ -24,8 +24,8 @@ data class DiagnosticsInput(
     val route: String?,
     val uptime: String?,
     val exit: String?,
-    /** Выход из ссылки только разрешён, не включён (`x=0`). */
-    val exitOff: Boolean,
+    /** На связи без выбранного выхода (`x=0` или выход выключен); `null` — туннель не поднят, не судим. */
+    val exitOff: Boolean?,
     val dnsCheck: DnsCheck,
     val privateDns: String?,
     val log: List<String>,
@@ -44,7 +44,7 @@ object Diagnostics {
                 (d.route?.let { ", $it" } ?: "") +
                 (d.uptime?.let { ", online $it" } ?: ""),
         )
-        appendLine("Exit: ${d.exit ?: "none"}, x=0: ${yes(d.exitOff)}")
+        appendLine("Exit: ${d.exit ?: "none"}, x=0: ${d.exitOff?.let(::yes) ?: "unknown"}")
         appendLine("DNS check: ${dnsText(d.dnsCheck)}, private DNS: ${d.privateDns ?: "off"}")
         val log = DiagnosticsScrubber.scrub(d.log.takeLast(LOG_LINES))
         appendLine("Log (last ${log.size}):")
