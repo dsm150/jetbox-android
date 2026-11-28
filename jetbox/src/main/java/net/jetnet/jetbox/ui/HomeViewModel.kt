@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.jetnet.jetbox.R
@@ -99,11 +100,19 @@ data class HomeUiState(
      * блокировка рекламы не работает, с кнопкой в настройки Android (решение владельца 26.11.2026).
      */
     val privateDnsHost: String? = null,
+    /**
+     * Дом ответил с момента подключения ([LiveStats.homeAnswered] или замер DNS). Пока нет — ядро уже
+     * «подключено», а щит ещё «Подключаем…»: защиты без дома нет.
+     */
+    val homeAnswered: Boolean = true,
 ) {
     val hasBox: Boolean get() = box != null
 
     /** Предупреждение о частном DNS — только при подключённом JetBox: без него блокировки и так нет. */
     val showsPrivateDnsWarning: Boolean get() = hasBox && privateDnsHost != null
+
+    /** Ядро подключено, а дом ещё молчит: «Подключаем…», нажатие — выключить. */
+    val awaitingHome: Boolean get() = state == VpnDisplayState.CONNECTED && !homeAnswered
 
     /**
      * Туннель включён, но сети нет: ядро стоит в «подключаюсь» с отметкой «нет сети». В iOS это
@@ -112,8 +121,16 @@ data class HomeUiState(
      */
     val offlineWhileConnecting: Boolean get() = state == VpnDisplayState.CONNECTING && coreNoNetwork
 
-    val phase: ShieldPhase get() = if (offlineWhileConnecting) ShieldPhase.OFFLINE else ShieldPhase.of(state, online)
-    val status: HomeStatus get() = if (offlineWhileConnecting) HomeStatus.OFFLINE else HomeStatus.of(state, online)
+    val phase: ShieldPhase get() = when {
+        offlineWhileConnecting -> ShieldPhase.OFFLINE
+        awaitingHome && online -> ShieldPhase.WORKING
+        else -> ShieldPhase.of(state, online)
+    }
+    val status: HomeStatus get() = when {
+        offlineWhileConnecting -> HomeStatus.OFFLINE
+        awaitingHome && online -> HomeStatus.CONNECTING
+        else -> HomeStatus.of(state, online)
+    }
     val power: PowerAction get() =
         if (offlineWhileConnecting && hasBox) PowerAction.DISCONNECT else JetBoxPowerAction.action(state, hasBox)
     val dockSubtitle: DockSubtitle get() = DockSubtitle.of(phase)
@@ -197,16 +214,25 @@ class HomeViewModel(
     private val update: StateFlow<UpdateInfo?> = updates?.available ?: MutableStateFlow(null)
 
     private val privateDnsHost = MutableStateFlow<String?>(null)
+    /**
+     * Дом ответил хоть раз с подключения — защёлка до выключения туннеля: мигание пира (переподключение
+     * ICE) щит обратно в «Подключаем…» не роняет. Ответ — рукопожатие с пиром коробки или замер DNS.
+     */
+    private val homeAnswered: StateFlow<Boolean> = combine(tunnel, probe.latencyMs) { t, probed ->
+        t.state to (probed != null || LiveStats.homeAnswered(t.peers))
+    }.scan(initialHomeAnswered()) { seen, (state, now) -> state == VpnDisplayState.CONNECTED && (seen || now) }
+        .stateIn(this.scope, SharingStarted.Eagerly, initialHomeAnswered())
 
     val ui: StateFlow<HomeUiState> = combine(
         combine(tunnel, box, engine.online, probe.latencyMs, pending) { t, b, on, probed, p -> build(t, b, on, probed, p) },
         update,
         privateDnsHost,
-    ) { s, u, dns -> s.copy(update = u, privateDnsHost = dns) }.stateIn(this.scope, SharingStarted.Eagerly, build(
+        homeAnswered,
+    ) { s, u, dns, h -> s.copy(update = u, privateDnsHost = dns, homeAnswered = h) }.stateIn(this.scope, SharingStarted.Eagerly, build(
         Tunnel(engine.state.value, engine.peers.value, engine.routes.value,
             engine.connectedSinceMillis.value, engine.clientState.value),
         box.value, engine.online.value, null, null,
-    ).copy(update = update.value))
+    ).copy(update = update.value, homeAnswered = initialHomeAnswered()))
 
     init {
         // Ядро сдвинулось (или сообщило ошибку) — ожидаемая фаза больше не нужна.
@@ -240,6 +266,10 @@ class HomeViewModel(
             selectedExit = exits.firstOrNull { it.selected }?.name,
         )
     }
+
+    /** Начальная отрисовка: туннель уже поднят (экран открыли заново) — судим по снимку пиров. */
+    private fun initialHomeAnswered(): Boolean =
+        engine.state.value == VpnDisplayState.CONNECTED && LiveStats.homeAnswered(engine.peers.value)
 
     /** Адрес JetBox для замера: только при CONNECTED и подключённом пире-доме, без маски. */
     private val probeTarget = tunnel.map { t ->

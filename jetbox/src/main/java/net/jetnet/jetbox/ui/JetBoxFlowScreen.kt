@@ -321,7 +321,7 @@ private fun FlowContent(step: Step, actions: JetBoxFlowActions, detailsInitially
                 modifier = Modifier.semantics { heading() },
             )
             Text(
-                step.exitNode?.let { stringResource(R.string.jb_protected_exit, it) }
+                step.exitNode?.let { stringResource(R.string.jb_protected_exit) }
                     ?: stringResource(R.string.jb_protected_no_exit),
                 style = JBType.subheadline,
                 color = c.muted,

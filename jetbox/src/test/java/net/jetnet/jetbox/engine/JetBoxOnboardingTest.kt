@@ -16,6 +16,7 @@ import net.jetnet.jetbox.link.JetBoxLink
 import net.jetnet.jetbox.link.JetBoxLinkPayload
 import net.jetnet.jetbox.logic.JetBoxFailure
 import net.jetnet.jetbox.logic.JetBoxIdentity
+import net.jetnet.jetbox.logic.PeerSnapshot
 import net.jetnet.jetbox.logic.RouteInfo
 import net.jetnet.jetbox.logic.VpnDisplayState
 import net.jetnet.jetbox.store.JetBoxBox
@@ -64,6 +65,7 @@ class JetBoxOnboardingTest {
         init {
             // Остатки замены IdentityRegistration разбирает по отпечатку в хранилище сценария.
             engine.storedFingerprint = { store.currentBox?.setupKeyFingerprint }
+            engine.homeOnConnect = HOME
         }
         val ob = JetBoxOnboarding(
             // Не backgroundScope: его работу advanceUntilIdle не крутит. Своя SupervisorJob — чтобы
@@ -163,6 +165,70 @@ class JetBoxOnboardingTest {
 
     // endregion
     // region полный путь
+
+    // region ответ дома (AppDev 22.11.2026: ядро «подключено» раньше, чем отвечает пир коробки)
+
+    @Test fun protectedOnlyAfterHomeAnswers() = runTest {
+        val env = env()
+        env.engine.homeOnConnect = null
+        env.engine.peers.value = listOf(HOME.copy(connected = false, bytesRx = 0))
+        env.tunnelComesUp(listOf(exit))
+        env.ob.handle(url())
+        env.ob.connect()
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertTrue("дом молчит — «Подключаем…»", env.ob.step.value is Step.Connecting)
+        assertEquals(listOf("home-exit"), env.engine.selectedRoutes)
+        val polls = env.engine.refreshCalls
+
+        // Соединение с пиром есть, но пакетов от дома ещё не было — всё ещё ждём.
+        env.engine.peers.value = listOf(HOME.copy(bytesRx = 0))
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertTrue(env.ob.step.value is Step.Connecting)
+        assertTrue("ждёт, опрашивая ядро", env.engine.refreshCalls > polls)
+
+        env.engine.peers.value = listOf(HOME)
+        advanceUntilIdle()
+        assertEquals(Step.Protected("home-exit"), env.ob.step.value)
+    }
+
+    @Test fun homeSilentTooLongClosesFlowWithoutProtected() = runTest {
+        val env = env()
+        env.engine.homeOnConnect = null
+        env.tunnelComesUp(listOf(exit))
+        env.ob.handle(url())
+        env.ob.connect()
+        advanceTimeBy(119_000)
+        runCurrent()
+        assertTrue(env.ob.step.value is Step.Connecting)
+        advanceUntilIdle()
+
+        assertEquals("«под защитой» не говорим, ждёт главный экран", Step.Idle, env.ob.step.value)
+        assertTrue(env.logs.any { "дом не ответил" in it })
+        assertEquals("туннель не гасим", 0, env.engine.stopCalls)
+        assertEquals("home-exit", env.store.currentBox?.selectedExitNode)
+    }
+
+    @Test fun homeSilentAfterChooseExitWaitsToo() = runTest {
+        val env = env()
+        env.engine.homeOnConnect = null
+        env.tunnelComesUp(listOf(exit, RouteInfo("z-exit", "0.0.0.0/0", false)))
+        env.ob.handle(url(e = null))
+        env.ob.connect()
+        advanceUntilIdle()
+        assertTrue(env.ob.step.value is Step.ChooseExit)
+
+        env.ob.chooseExit("z-exit")
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertTrue(env.ob.step.value is Step.Connecting)
+        env.engine.peers.value = listOf(HOME)
+        advanceUntilIdle()
+        assertEquals(Step.Protected("z-exit"), env.ob.step.value)
+    }
+
+    // endregion
 
     @Test fun connectGoesAllTheWayToProtected() = runTest {
         val env = env()
@@ -1581,4 +1647,9 @@ class JetBoxOnboardingTest {
     }
 
     // endregion
+
+    private companion object {
+        /** Пир-коробка, от которой уже пришли пакеты — «дом ответил». */
+        val HOME = PeerSnapshot("100.64.0.10/16", "home.netbird.cloud", true, false, 0, 1_000, 500, listOf("0.0.0.0/0"))
+    }
 }

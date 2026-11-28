@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import net.jetnet.jetbox.engine.JetBoxOnboarding.Step
 import net.jetnet.jetbox.link.JetBoxLinkSignature
 import net.jetnet.jetbox.logic.JetBoxFailure
+import net.jetnet.jetbox.logic.PeerSnapshot
 import net.jetnet.jetbox.logic.RouteInfo
 import net.jetnet.jetbox.logic.VpnDisplayState
 import net.jetnet.jetbox.store.JetBoxBox
@@ -50,6 +51,8 @@ class SignedLinkOnboardingTest {
         )
         init {
             engine.storedFingerprint = { store.currentBox?.setupKeyFingerprint }
+            // «Под защитой» — только после ответа дома (1.0.7): дом отвечает сразу с подключением.
+            engine.homeOnConnect = PeerSnapshot("100.64.0.10/16", "home.netbird.cloud", true, false, 0, 1_000, 500, listOf("0.0.0.0/0"))
         }
     }
 

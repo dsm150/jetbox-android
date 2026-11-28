@@ -20,7 +20,7 @@
     <string name="jb_connecting">Подключаем…</string>
     <string name="jb_selecting_exit">Настраиваем выход в интернет…</string>
     <string name="jb_protected_title">Вы под защитой JetBox</string>
-    <string name="jb_protected_exit">Интернет идёт через «%1$s»</string>
+    <string name="jb_protected_exit">Интернет теперь идёт через ваш JetBox — так же, как дома.</string>
     <string name="jb_protected_no_exit">Защищённая сеть подключена. Интернет идёт как обычно, через вашего провайдера.</string>
     <string name="jb_exit_picker_title">Выберите выход</string>
     <string name="jb_exit_picker_message">Через какой JetBox выпускать интернет с этого телефона?</string>

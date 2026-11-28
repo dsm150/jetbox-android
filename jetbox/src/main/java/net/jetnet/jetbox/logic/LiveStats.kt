@@ -45,6 +45,18 @@ object LiveStats {
             ?: peers.filter { it.connected }.singleOrNull()
     }
 
+    /**
+     * Дом ответил: пир-JetBox на связи и от него пришёл хоть один пакет (ответ на рукопожатие
+     * WireGuard — тоже пакет). Статус ядра «подключено» приходит, как только есть management, а пир
+     * коробки при этом может минуту-две висеть в установке соединения (находка AppDev 22.11.2026).
+     * Коробку не опознать (несколько пиров без маршрутов) — годится любой ответивший пир; пиров ещё
+     * нет — не ответил.
+     */
+    fun homeAnswered(peers: List<PeerSnapshot>): Boolean {
+        fun answered(p: PeerSnapshot) = p.connected && p.bytesRx > 0
+        return homePeer(peers)?.let(::answered) ?: peers.any(::answered)
+    }
+
     fun stats(peers: List<PeerSnapshot>): HomeStats {
         val p = homePeer(peers) ?: return HomeStats(null, 0, 0, null, null)
         // Ядро меряет задержку лишь на прямом соединении; 0 — «ещё не мерило», а не ноль.

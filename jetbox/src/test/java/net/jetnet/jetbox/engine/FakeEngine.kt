@@ -197,8 +197,15 @@ class FakeEngine(
         pollingActive = active
     }
 
+    /**
+     * Пир-дом, который «отвечает» сразу при CONNECTED (если пиров ещё нет): сценарий по ссылке
+     * говорит «под защитой» только после ответа дома. `null` — пиры задаёт тест.
+     */
+    var homeOnConnect: PeerSnapshot? = null
+
     /** Удобство для тестов: перевести состояние, как это сделал бы слушатель ядра. */
     fun emit(newState: VpnDisplayState, nowMillis: Long = 1_000L) {
+        if (newState == VpnDisplayState.CONNECTED && peers.value.isEmpty()) homeOnConnect?.let { peers.value = listOf(it) }
         connectedSinceMillis.value = if (newState == VpnDisplayState.CONNECTED) {
             connectedSinceMillis.value ?: nowMillis
         } else {

@@ -1,7 +1,9 @@
 package net.jetnet.jetbox.logic
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -124,5 +126,29 @@ class LiveStatsTest {
     @Test fun meshIpWithoutMask() {
         assertEquals("100.64.0.10", LiveStats.meshIp("100.64.0.10/16"))
         assertEquals("100.64.0.10", LiveStats.meshIp("100.64.0.10"))
+    }
+
+    // --- дом ответил (AppDev 22.11.2026) ---
+
+    private fun box(connected: Boolean = true, rx: Long = 100, routes: List<String> = listOf("0.0.0.0/0")) =
+        PeerSnapshot("100.64.0.10/16", "box", connected, false, 0, rx, 0, routes)
+
+    @Test fun homeAnsweredNeedsConnectionAndPackets() {
+        assertTrue(LiveStats.homeAnswered(listOf(box())))
+        assertFalse("пакетов от дома не было", LiveStats.homeAnswered(listOf(box(rx = 0))))
+        assertFalse("не на связи", LiveStats.homeAnswered(listOf(box(connected = false))))
+        assertFalse("пиров ещё нет", LiveStats.homeAnswered(emptyList()))
+    }
+
+    @Test fun homeAnsweredLooksAtHomePeerNotOthers() {
+        val other = PeerSnapshot("100.64.0.20/16", "laptop", true, false, 0, 5_000, 0, emptyList())
+        assertFalse("ответил чужой пир, коробка молчит", LiveStats.homeAnswered(listOf(box(rx = 0), other)))
+    }
+
+    @Test fun homeAnsweredWithoutRecognizableHomeTakesAnyAnsweredPeer() {
+        val a = PeerSnapshot("100.64.0.20/16", "a", true, false, 0, 5_000, 0, emptyList())
+        val b = PeerSnapshot("100.64.0.21/16", "b", true, false, 0, 0, 0, emptyList())
+        assertTrue(LiveStats.homeAnswered(listOf(a, b)))
+        assertFalse(LiveStats.homeAnswered(listOf(b, b.copy(ip = "100.64.0.22/16"))))
     }
 }

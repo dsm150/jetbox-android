@@ -20,7 +20,7 @@
     <string name="jb_connecting">Connecting…</string>
     <string name="jb_selecting_exit">Setting up the internet exit…</string>
     <string name="jb_protected_title">You are protected by JetBox</string>
-    <string name="jb_protected_exit">Internet goes through “%1$s”</string>
+    <string name="jb_protected_exit">Internet now goes through your JetBox, the same way as at home.</string>
     <string name="jb_protected_no_exit">The secure network is up. Internet still goes through your usual provider.</string>
     <string name="jb_exit_picker_title">Choose an exit</string>
     <string name="jb_exit_picker_message">Which JetBox should carry this phone’s internet traffic?</string>

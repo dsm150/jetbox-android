@@ -28,6 +28,7 @@ import net.jetnet.jetbox.logic.ExitNodeResolver
 import net.jetnet.jetbox.logic.ExitOutcome
 import net.jetnet.jetbox.logic.JetBoxFailure
 import net.jetnet.jetbox.logic.JetBoxIdentity
+import net.jetnet.jetbox.logic.LiveStats
 import net.jetnet.jetbox.logic.RouteInfo
 import net.jetnet.jetbox.logic.VpnDisplayState
 import net.jetnet.jetbox.store.JetBoxStore
@@ -73,6 +74,11 @@ class JetBoxOnboarding(
     private val routesTimeoutMs: Long = 15_000,
     /** Сколько ждём остановки прежнего туннеля при переключении JetBox. */
     private val stopTimeoutMs: Long = 10_000,
+    /**
+     * Сколько ждём первого ответа дома после подъёма туннеля, прежде чем закрыть экран: дальше ждёт
+     * главный экран («Подключаем…»). AppDev 22.11.2026: пир коробки бывает на связи через 1–2 мин.
+     */
+    private val homeTimeoutMs: Long = 120_000,
     /** Журнал. Значение ключа сюда не попадает — только маска. */
     private val log: (String) -> Unit = { Log.i(TAG, it) },
     private val clock: () -> Long = System::currentTimeMillis,
@@ -218,11 +224,12 @@ class JetBoxOnboarding(
         if (_step.value !is Step.ChooseExit) return
         cancelFlow()
         flowJob = scope.launch {
+            val payload = (_step.value as Step.ChooseExit).payload
             if (name != null) {
                 engine.routes.value.firstOrNull { it.name == name }?.let { select(it) }
                 store.rememberExitNode(name)
             }
-            _step.value = Step.Protected(name)
+            protect(payload, name)
         }
     }
 
@@ -474,20 +481,20 @@ class JetBoxOnboarding(
         if (!payload.enablesDefaultExit) {
             log("JetBox: x=0 — выход в интернет не включаем")
             val routes = withTimeoutOrNull(routesTimeoutMs) { awaitExitRoutes() } ?: engine.routes.value
-            _step.value = Step.Protected(routes.firstOrNull { it.isExitNode && it.selected }?.name)
+            protect(payload, routes.firstOrNull { it.isExitNode && it.selected }?.name)
             return
         }
         _step.value = Step.SelectingExit(payload)
         when (val outcome = resolveExitNode(payload)) {
             is ExitOutcome.Selected -> {
                 store.rememberExitNode(outcome.name)
-                _step.value = Step.Protected(outcome.name)
+                protect(payload, outcome.name)
             }
             is ExitOutcome.Ambiguous -> {
                 log("JetBox: выход из ссылки не найден, показываем выбор (${outcome.options.size} вариантов)")
                 _step.value = Step.ChooseExit(payload, outcome.options)
             }
-            ExitOutcome.None -> _step.value = Step.Protected(null)
+            ExitOutcome.None -> protect(payload, null)
         }
     }
 
@@ -639,6 +646,34 @@ class JetBoxOnboarding(
         return outcome
     }
 
+    /**
+     * «Под защитой» — только когда дом ответил ([LiveStats.homeAnswered]): статус ядра «подключено»
+     * приходит раньше, чем пир коробки. До ответа — «Подключаем…». Не дождались за [homeTimeoutMs] —
+     * экран закрываем без «под защитой»: главный экран сам ждёт дом и даёт выключить туннель.
+     */
+    private suspend fun protect(payload: JetBoxLinkPayload, exitNode: String?) {
+        if (!LiveStats.homeAnswered(engine.peers.value)) {
+            _step.value = Step.Connecting(payload)
+            if (withTimeoutOrNull(homeTimeoutMs) { awaitHome() } == null) {
+                log("JetBox: дом не ответил за ${homeTimeoutMs / 1000} с — экран закрыт, ждёт главный экран")
+                _step.value = Step.Idle
+                return
+            }
+        }
+        _step.value = Step.Protected(exitNode)
+    }
+
+    /** Опрашивает ядро, пока не ответит дом; таймаут накладывает вызывающий. */
+    private suspend fun awaitHome() {
+        while (true) {
+            engine.refresh()
+            val answered = withTimeoutOrNull(HOME_POLL_MS) {
+                engine.peers.first { LiveStats.homeAnswered(it) }
+            }
+            if (answered != null) return
+        }
+    }
+
     /** Опрашивает ядро, пока среди маршрутов не появится выход; таймаут накладывает вызывающий. */
     private suspend fun awaitExitRoutes(): List<RouteInfo> {
         while (true) {
@@ -689,6 +724,7 @@ class JetBoxOnboarding(
         private const val TAG = "JetBoxOnboarding"
         private const val TUNNEL_POLL_MS = 500L
         private const val ROUTES_POLL_MS = 900L
+        private const val HOME_POLL_MS = 1_000L
         private const val SELECT_SETTLE_MS = 700L
         private const val STOP_POLL_MS = 200L
         private const val RESTORE_INCOMPLETE =

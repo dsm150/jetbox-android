@@ -44,7 +44,8 @@ class HomeViewModelTest {
         latencyMs: Long = 0,
         connected: Boolean = true,
         ip: String = "100.64.0.10/16",
-    ) = PeerSnapshot(ip, "home.netbird.cloud", connected, relayed, latencyMs, 48_200_000, 6_100_000, listOf("0.0.0.0/0"))
+        bytesRx: Long = 48_200_000,
+    ) = PeerSnapshot(ip, "home.netbird.cloud", connected, relayed, latencyMs, bytesRx, 6_100_000, listOf("0.0.0.0/0"))
 
     private class Probe(var answer: Long?) : HomeProbe {
         val asked = mutableListOf<String>()
@@ -120,6 +121,89 @@ class HomeViewModelTest {
         assertEquals(ShieldPhase.WORKING_REVERSE, ui.phase)
         assertEquals(R.string.jb_home_disconnecting, ui.status.text)
         assertEquals(R.string.jb_home_disconnecting, ui.dockSubtitle.text)
+    }
+
+    // --- «Подключаем…», пока не ответит дом (AppDev 22.11.2026) ---
+
+    @Test fun connectedButHomeSilentIsStillConnecting() = runTest {
+        val e = env()
+        e.engine.connect(peer(connected = false, bytesRx = 0))
+        runCurrent()
+        val ui = e.vm.ui.value
+        assertTrue(ui.awaitingHome)
+        assertEquals(ShieldPhase.WORKING, ui.phase)
+        assertEquals(R.string.jb_home_connecting, ui.status.text)
+        assertEquals(R.string.jb_dock_connecting, ui.dockSubtitle.text)
+        assertEquals("туннель поднят — нажатие его выключает", PowerAction.DISCONNECT, ui.power)
+        assertFalse(ui.showsMetrics)
+    }
+
+    @Test fun noPeersYetIsStillConnecting() = runTest {
+        val e = env()
+        e.engine.connect()
+        runCurrent()
+        assertEquals(ShieldPhase.WORKING, e.vm.ui.value.phase)
+    }
+
+    @Test fun handshakeWithHomeTurnsShieldOn() = runTest {
+        val e = env()
+        e.engine.connect(peer(bytesRx = 0))
+        runCurrent()
+        assertEquals("пир на связи, но от дома ни пакета", ShieldPhase.WORKING, e.vm.ui.value.phase)
+
+        e.engine.peers.value = listOf(peer(bytesRx = 148))
+        runCurrent()
+        assertEquals(ShieldPhase.ON, e.vm.ui.value.phase)
+        assertEquals(R.string.jb_home_connected, e.vm.ui.value.status.text)
+    }
+
+    @Test fun dnsAnswerFromHomeTurnsShieldOn() = runTest {
+        val e = env(probeAnswer = 31)
+        e.engine.connect(peer(bytesRx = 0))
+        val job = launch { e.vm.whileVisible() }
+        runCurrent()
+        assertEquals(ShieldPhase.ON, e.vm.ui.value.phase)
+        assertEquals(31L, e.vm.ui.value.latencyMs)
+        job.cancel()
+    }
+
+    @Test fun homeAnsweredLatchesUntilTunnelGoesDown() = runTest {
+        val e = env()
+        e.engine.connect(peer())
+        runCurrent()
+        assertEquals(ShieldPhase.ON, e.vm.ui.value.phase)
+
+        // Пир мигнул (переподключение ICE) — щит не роняем.
+        e.engine.peers.value = listOf(peer(connected = false))
+        runCurrent()
+        assertEquals(ShieldPhase.ON, e.vm.ui.value.phase)
+
+        // Туннель переподнялся — снова ждём ответа дома.
+        e.engine.emit(VpnDisplayState.CONNECTING)
+        runCurrent()
+        e.engine.emit(VpnDisplayState.CONNECTED)
+        runCurrent()
+        assertEquals(ShieldPhase.WORKING, e.vm.ui.value.phase)
+        e.engine.peers.value = listOf(peer())
+        runCurrent()
+        assertEquals(ShieldPhase.ON, e.vm.ui.value.phase)
+    }
+
+    @Test fun offlineWhileAwaitingHomeIsOffline() = runTest {
+        val e = env()
+        e.engine.connect(peer(connected = false, bytesRx = 0))
+        e.engine.online.value = false
+        runCurrent()
+        assertEquals(ShieldPhase.OFFLINE, e.vm.ui.value.phase)
+        assertEquals(R.string.jb_home_offline, e.vm.ui.value.status.text)
+    }
+
+    @Test fun reopenedScreenWithAnsweredHomeStartsOn() = runTest {
+        val e = env {
+            peers.value = listOf(peer())
+            emit(VpnDisplayState.CONNECTED)
+        }
+        assertEquals(ShieldPhase.ON, e.vm.ui.value.phase)
     }
 
     @Test fun protectedState() = runTest {
