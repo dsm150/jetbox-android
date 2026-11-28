@@ -29,12 +29,20 @@ object LiveStats {
     private val EXIT_ROUTES = setOf("0.0.0.0/0", "::/0")
 
     /**
-     * JetBox — тот пир, который раздаёт выход в интернет. Подключённый важнее простаивающего:
-     * при смене коробки старый пир какое-то время ещё виден.
+     * Какой пир — JetBox, по убыванию уверенности:
+     * 1. раздаёт выход в интернет (`0.0.0.0/0`, `::/0`);
+     * 2. иначе — раздаёт любой маршрут: домашнюю сеть при выключенном выходе (`x=0`, демо 22.11.2026 —
+     *    маршрут `192.168.60.0/24` через коробку, выхода нет);
+     * 3. иначе — единственный подключённый пир (у телефона кроме коробки никого).
+     * Внутри ступени подключённый важнее простаивающего: при смене коробки старый пир какое-то время
+     * ещё виден. Маршруты у пира — только активные (выбранные на телефоне), так что ступень 1 бывает
+     * лишь при включённом выходе.
      */
     fun homePeer(peers: List<PeerSnapshot>): PeerSnapshot? {
-        val exits = peers.filter { p -> p.routes.any { it in EXIT_ROUTES } }
-        return exits.firstOrNull { it.connected } ?: exits.firstOrNull()
+        fun pick(candidates: List<PeerSnapshot>) = candidates.firstOrNull { it.connected } ?: candidates.firstOrNull()
+        return pick(peers.filter { p -> p.routes.any { it in EXIT_ROUTES } })
+            ?: pick(peers.filter { it.routes.isNotEmpty() })
+            ?: peers.filter { it.connected }.singleOrNull()
     }
 
     fun stats(peers: List<PeerSnapshot>): HomeStats {

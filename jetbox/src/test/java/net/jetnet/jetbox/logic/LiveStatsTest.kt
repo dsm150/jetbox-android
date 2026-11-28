@@ -43,9 +43,41 @@ class LiveStatsTest {
         assertEquals("old", LiveStats.homePeer(peers)?.fqdn)
     }
 
-    @Test fun noExitRouteMeansNoBox() {
-        assertNull(LiveStats.homePeer(listOf(peer("laptop", routes = listOf("10.0.0.0/8")))))
+    @Test fun withoutExitThePeerWithHomeNetworkIsTheBox() {
+        // x=0: выход выключен, коробка раздаёт только домашнюю сеть.
+        val peers = listOf(peer("laptop"), peer("box", routes = listOf("192.168.60.0/24")), peer("phone"))
+        assertEquals("box", LiveStats.homePeer(peers)?.fqdn)
+    }
+
+    @Test fun exitBeatsHomeNetworkRoute() {
+        val peers = listOf(peer("lan", routes = listOf("192.168.60.0/24")), peer("exit", routes = listOf("0.0.0.0/0")))
+        assertEquals("exit", LiveStats.homePeer(peers)?.fqdn)
+    }
+
+    @Test fun connectedRoutedPeerWinsOverIdleOne() {
+        val peers = listOf(
+            peer("old", connected = false, routes = listOf("192.168.60.0/24")),
+            peer("live", connected = true, routes = listOf("192.168.60.0/24")),
+        )
+        assertEquals("live", LiveStats.homePeer(peers)?.fqdn)
+    }
+
+    @Test fun withoutRoutesTheOnlyConnectedPeerIsTheBox() {
+        val peers = listOf(peer("box", connected = true), peer("gone", connected = false))
+        assertEquals("box", LiveStats.homePeer(peers)?.fqdn)
+    }
+
+    @Test fun withoutRoutesSeveralConnectedPeersMeanNoBox() {
+        assertNull(LiveStats.homePeer(listOf(peer("a"), peer("b"))))
+        assertNull(LiveStats.homePeer(listOf(peer("idle", connected = false))))
         assertNull(LiveStats.homePeer(emptyList()))
+    }
+
+    @Test fun statsComeFromTheHomeNetworkPeer() {
+        val s = LiveStats.stats(
+            listOf(peer("box", routes = listOf("192.168.60.0/24"), latencyMs = 42, relayed = false, ip = "100.64.1.2/16", rx = 10, tx = 20)),
+        )
+        assertEquals(HomeStats(relayed = false, bytesRx = 10, bytesTx = 20, coreLatencyMs = 42, homeIp = "100.64.1.2"), s)
     }
 
     @Test fun latencyFromGoDuration() {
@@ -85,7 +117,7 @@ class LiveStatsTest {
     }
 
     @Test fun noHomePeerGivesEmptyStats() {
-        assertEquals(HomeStats(null, 0, 0, null, null), LiveStats.stats(listOf(peer("laptop"))))
+        assertEquals(HomeStats(null, 0, 0, null, null), LiveStats.stats(listOf(peer("laptop"), peer("tablet"))))
         assertEquals(HomeStats(null, 0, 0, null, null), LiveStats.stats(emptyList()))
     }
 
