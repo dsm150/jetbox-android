@@ -5,6 +5,9 @@ Google Play Developer API для JetBox (net.jetnet.jetbox) — без библ�
 
   ./jetbox-play-upload.py status                       # треки и выпуски (ничего не меняет)
   ./jetbox-play-upload.py library <файл.aab>          # бандл — только в библиотеку (правка с одним бандлом)
+  ./jetbox-play-upload.py upload <файл.aab> --notes-ru "…" --commit --send-for-review
+        # ВЫПУСК: commit без changesNotSentForReview — правка сразу уходит на проверку Google (управляемая публикация
+        # выключена). Только по слову владельца «релиз готов» (28.11.2026: 1.0.7 (22) так и отправлена).
   ./jetbox-play-upload.py upload <файл.aab> --notes-ru "…" [--track production] [--commit]
         # загрузить бандл в новую правку и поставить его выпуском трека; без --commit правка
         # проверяется (edits.validate) и удаляется — в Play ничего не меняется. У сервисного аккаунта нет права на
@@ -104,7 +107,7 @@ def status(play: Play):
         play.call("DELETE", f"{API}/edits/{edit}")
 
 
-def upload(play: Play, aab: str, notes_ru: str, track: str, commit: bool):
+def upload(play: Play, aab: str, notes_ru: str, track: str, commit: bool, send_for_review: bool = False):
     edit = play.edit()
     done = False
     try:
@@ -121,7 +124,11 @@ def upload(play: Play, aab: str, notes_ru: str, track: str, commit: bool):
         play.call("PUT", f"{API}/edits/{edit}/tracks/{track}", body={"track": track, "releases": [release]})
         play.call("POST", f"{API}/edits/{edit}:validate")
         print(f"трек {track}: выпуск {code}, проверка правки пройдена")
-        if commit:
+        if commit and send_for_review:
+            r = play.call("POST", f"{API}/edits/{edit}:commit")
+            done = True
+            print(f"правка {r.get('id')} применена и отправлена на проверку Google")
+        elif commit:
             r = play.call("POST", f"{API}/edits/{edit}:commit?changesNotSentForReview=true")
             done = True
             print(f"правка {r.get('id')} применена — выпуск НЕ отправлен на проверку: отправить в консоли")
@@ -155,6 +162,8 @@ def main():
     p.add_argument("--notes-ru", default="")
     p.add_argument("--track", default="production")
     p.add_argument("--commit", action="store_true")
+    p.add_argument("--send-for-review", action="store_true",
+                   help="commit без changesNotSentForReview: сразу на проверку Google — только по слову владельца")
     a = p.parse_args()
     key = os.environ.get("JETBOX_PLAY_KEY", os.path.expanduser("~/.config/jetbox-android/play.json"))
     play = Play(token(key))
@@ -165,7 +174,9 @@ def main():
     else:
         if not a.aab or not a.notes_ru:
             sys.exit("upload: нужен файл .aab и --notes-ru")
-        upload(play, a.aab, a.notes_ru, a.track, a.commit)
+        if a.send_for_review and not a.commit:
+            sys.exit("--send-for-review — только вместе с --commit")
+        upload(play, a.aab, a.notes_ru, a.track, a.commit, a.send_for_review)
 
 
 if __name__ == "__main__":
