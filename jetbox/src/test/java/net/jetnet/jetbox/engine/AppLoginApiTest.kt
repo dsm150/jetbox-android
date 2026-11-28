@@ -38,12 +38,19 @@ class AppLoginApiTest {
                         if (line.lowercase().startsWith("authorization:")) authorization = line.substringAfter(':').trim()
                     }
                     synchronized(paths) { auth += authorization }
-                    val buf = CharArray(length)
-                    var read = 0
-                    while (read < length) read += input.read(buf, read, length - read)
+                    // Content-Length — в байтах, а читатель отдаёт символы: кириллица длиннее в байтах.
+                    val sb = StringBuilder()
+                    var bytesRead = 0
+                    while (bytesRead < length) {
+                        val c = input.read()
+                        if (c < 0) break
+                        sb.append(c.toChar())
+                        bytesRead += c.toChar().toString().toByteArray(Charsets.UTF_8).size
+                    }
+                    val buf = sb.toString()
                     synchronized(paths) {
                         paths += requestLine.split(' ')[0] + " " + requestLine.split(' ')[1]
-                        bodies += JSONObject(String(buf))
+                        bodies += JSONObject(buf)
                     }
                     val bytes = body.toByteArray(Charsets.UTF_8)
                     val head = "HTTP/1.1 $status\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
@@ -215,6 +222,28 @@ class AppLoginApiTest {
         assertEquals(AccountDeleteResult.Failed("HTTP 409"), api().deleteAccount("jbd_abc"))
         serve("502 Bad Gateway", """{"error":"unavailable"}""")
         assertEquals(AccountDeleteResult.Failed("HTTP 502"), api().deleteAccount("jbd_abc"))
+    }
+
+    /** «Помощь» — POST support с Bearer (§3а); support_email берётся из любого ответа. */
+    @Test fun supportSendsMessageAndReadsAnswers() = runBlocking {
+        serve("200 OK", """{"ok":true,"promise":"Ответим в течение часа","support_email":"help@jet-net.net"}""")
+        assertEquals(SupportResult.Sent("Ответим в течение часа", "help@jet-net.net"), api().support("jbd_abc", "нет интернета", "diag", "1.0.7 (22)", "ru"))
+        assertEquals("POST /api/app/v1/support", paths.last())
+        assertEquals("Bearer jbd_abc", auth.last())
+        val b = bodies.last()
+        assertEquals("нет интернета", b.getString("message"))
+        assertEquals("diag", b.getString("diagnostics"))
+        assertEquals("android", b.getString("platform"))
+        assertEquals("1.0.7 (22)", b.getString("version"))
+        assertEquals("ru", b.getString("lang"))
+        serve("413 Payload Too Large", """{"error":"too_long","support_email":"help@jet-net.net"}""")
+        assertEquals(SupportResult.TooLong("help@jet-net.net"), api().support("jbd_abc", "m", "d", "v", "ru"))
+        serve("429 Too Many Requests", """{"error":"rate_limited","retry_after":45}""")
+        assertEquals(SupportResult.RateLimited(45, null), api().support("jbd_abc", "m", "d", "v", "ru"))
+        serve("502 Bad Gateway")
+        assertEquals(SupportResult.Failed("HTTP 502", null), api().support("jbd_abc", "m", "d", "v", "ru"))
+        serve("401 Unauthorized", """{"error":"bad_token"}""")
+        assertTrue(api().support("jbd_abc", "m", "d", "v", "ru") is SupportResult.Failed)
     }
 
     @Test fun revokeDeviceNoServer() = runBlocking {

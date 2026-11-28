@@ -1,5 +1,7 @@
 package net.jetnet.jetbox.engine
 
+import net.jetnet.jetbox.logic.JetBoxLog
+
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -80,7 +82,7 @@ class JetBoxOnboarding(
      */
     private val homeTimeoutMs: Long = 120_000,
     /** Журнал. Значение ключа сюда не попадает — только маска. */
-    private val log: (String) -> Unit = { Log.i(TAG, it) },
+    private val log: (String) -> Unit = { JetBoxLog.i(TAG, it) },
     private val clock: () -> Long = System::currentTimeMillis,
     /** Правила разбора ссылки ([JetBoxLink.parse]): JetBox safety — только подписанные. В тестах подменяются. */
     private val signedLinks: Boolean = JetBoxConfig.LINK_SIGNED,

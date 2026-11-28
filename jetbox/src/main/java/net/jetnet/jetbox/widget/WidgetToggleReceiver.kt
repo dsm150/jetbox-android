@@ -1,5 +1,7 @@
 package net.jetnet.jetbox.widget
 
+import net.jetnet.jetbox.logic.JetBoxLog
+
 import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -46,7 +48,7 @@ class WidgetToggleReceiver : BroadcastReceiver() {
             // Замена подключения: ядро не запустится (EngineRunner.runClient) — открываем приложение.
             identitySwap = VPNService.isIdentitySwapInProgress(),
         )
-        Log.i(TAG, "tap: $tap ($state)")
+        JetBoxLog.i(TAG, "tap: $tap ($state)")
         when (tap) {
             WidgetTap.OPEN_APP -> openApp(app)
             WidgetTap.REFRESH -> JetBoxWidget.updateAll(app, engine.state.value)
@@ -55,7 +57,7 @@ class WidgetToggleReceiver : BroadcastReceiver() {
                 app.startForegroundService(Intent(app, VPNService::class.java).setAction(ALWAYS_ON_START))
             } catch (e: Exception) {
                 // ForegroundServiceStartNotAllowedException и т. п.: включит приложение.
-                Log.w(TAG, "start from widget refused: ${e.message}")
+                JetBoxLog.w(TAG, "start from widget refused: ${e.message}")
                 openApp(app)
             }
             WidgetTap.NONE -> Unit
@@ -73,7 +75,7 @@ class WidgetToggleReceiver : BroadcastReceiver() {
             ?.any { it.service.className == VPNService::class.java.name && it.foreground } == true
     } catch (e: Exception) {
         // Не знаем — не объявляем устаревшим: касание сработает по сохранённому, как раньше.
-        Log.w(TAG, "running services unavailable: ${e.message}")
+        JetBoxLog.w(TAG, "running services unavailable: ${e.message}")
         true
     }
 

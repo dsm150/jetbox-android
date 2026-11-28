@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
+import net.jetnet.jetbox.logic.DnsCheck
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
@@ -100,6 +103,8 @@ data class HomeUiState(
      * блокировка рекламы не работает, с кнопкой в настройки Android (решение владельца 26.11.2026).
      */
     val privateDnsHost: String? = null,
+    /** Итог проверки «DNS мимо JetBox» (канарейка); для капсулы и диагностики. */
+    val dnsCheck: DnsCheck = DnsCheck.NOT_CHECKED,
     /**
      * Дом ответил с момента подключения ([LiveStats.homeAnswered] или замер DNS). Пока нет — ядро уже
      * «подключено», а щит ещё «Подключаем…»: защиты без дома нет.
@@ -110,6 +115,9 @@ data class HomeUiState(
 
     /** Предупреждение о частном DNS — только при подключённом JetBox: без него блокировки и так нет. */
     val showsPrivateDnsWarning: Boolean get() = hasBox && privateDnsHost != null
+
+    /** DNS мимо JetBox (канарейка); при включённом частном DNS — его капсула, она конкретнее. */
+    val showsDnsBypassWarning: Boolean get() = hasBox && dnsCheck == DnsCheck.BYPASS && privateDnsHost == null
 
     /** Ядро подключено, а дом ещё молчит: «Подключаем…», нажатие — выключить. */
     val awaitingHome: Boolean get() = state == VpnDisplayState.CONNECTED && !homeAnswered
@@ -185,6 +193,13 @@ class HomeViewModel(
      * ядро не ставит в туннель свой DNS, и блокировка рекламы JetBox не работает (приёмка Fabrika 26.11.2026).
      */
     private val privateDns: () -> String? = { null },
+    /**
+     * Проверка «DNS мимо JetBox» канарейкой ([net.jetnet.jetbox.logic.DnsCanary], спека 2026-11-28-app-help-and-dns-check
+     * §3) по mesh-адресу дома; `null` — не проверяем.
+     */
+    private val dnsCanary: (suspend (meshIp: String) -> DnsCheck)? = null,
+    /** Как часто повторять проверку DNS, пока «Под защитой». */
+    private val dnsCheckIntervalMs: Long = 10 * 60_000L,
 ) : ViewModel() {
 
     private val scope: CoroutineScope = scope ?: viewModelScope
@@ -214,6 +229,7 @@ class HomeViewModel(
     private val update: StateFlow<UpdateInfo?> = updates?.available ?: MutableStateFlow(null)
 
     private val privateDnsHost = MutableStateFlow<String?>(null)
+    private val dnsCheck = MutableStateFlow(DnsCheck.NOT_CHECKED)
     /**
      * Дом ответил хоть раз с подключения — защёлка до выключения туннеля: мигание пира (переподключение
      * ICE) щит обратно в «Подключаем…» не роняет. Ответ — рукопожатие с пиром коробки или замер DNS.
@@ -228,7 +244,8 @@ class HomeViewModel(
         update,
         privateDnsHost,
         homeAnswered,
-    ) { s, u, dns, h -> s.copy(update = u, privateDnsHost = dns, homeAnswered = h) }.stateIn(this.scope, SharingStarted.Eagerly, build(
+        dnsCheck,
+    ) { s, u, dns, h, check -> s.copy(update = u, privateDnsHost = dns, homeAnswered = h, dnsCheck = check) }.stateIn(this.scope, SharingStarted.Eagerly, build(
         Tunnel(engine.state.value, engine.peers.value, engine.routes.value,
             engine.connectedSinceMillis.value, engine.clientState.value),
         box.value, engine.online.value, null, null,
@@ -295,6 +312,23 @@ class HomeViewModel(
         if (updates != null) launch { updates.check() }
         // Частный DNS меняют в настройках телефона — перечитываем при каждом возврате на экран и смене состояния туннеля.
         launch { engine.state.collect { privateDnsHost.value = privateDns() } }
+        // DNS мимо JetBox: при «Под защитой» (дом на связи) — сразу, раз в 10 минут и после смены сети.
+        dnsCanary?.let { canary ->
+            launch {
+                combine(probeTarget, engine.online) { ip, online -> ip?.takeIf { online } }
+                    .distinctUntilChanged()
+                    .collectLatest { ip ->
+                        if (ip == null) {
+                            dnsCheck.value = DnsCheck.NOT_CHECKED
+                            return@collectLatest
+                        }
+                        while (true) {
+                            dnsCheck.value = canary(ip)
+                            delay(dnsCheckIntervalMs)
+                        }
+                    }
+            }
+        }
         engine.setPolling(true)
         try {
             probe.run(probeTarget)

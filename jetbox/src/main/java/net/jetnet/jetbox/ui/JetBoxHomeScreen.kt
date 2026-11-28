@@ -69,6 +69,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import net.jetnet.jetbox.JetBoxProcess
 import net.jetnet.jetbox.R
@@ -101,6 +102,7 @@ fun homeViewModelFactory(context: Context): ViewModelProvider.Factory {
                 probe = HomeProbeRunner(),
                 updates = JetBoxProcess.updates(app),
                 privateDns = { net.jetnet.jetbox.engine.PrivateDnsReader.hostname(app) },
+                dnsCanary = systemDnsCanary()::check,
             )
         }
     }
@@ -130,10 +132,12 @@ fun JetBoxHomeScreen(vm: HomeViewModel, presenting: Boolean, onOpenSettings: () 
     // Пришла ссылка — экран сценария перекрывает всё (iOS: оверлей поверх листов). Листы и диалог —
     // отдельные окна над нашим, поэтому закрываем их сами.
     var showsPrivateDns by rememberSaveable { mutableStateOf(false) }
+    var showsDnsBypass by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(presenting) {
         if (!presenting) return@LaunchedEffect
         showsDetails = false
         showsPrivateDns = false
+        showsDnsBypass = false
         vm.dismissVpnDenied()
     }
 
@@ -150,7 +154,19 @@ fun JetBoxHomeScreen(vm: HomeViewModel, presenting: Boolean, onOpenSettings: () 
         onOpenDetails = { showsDetails = true },
         onUpdate = { ui.update?.let { openUrl(it.url) } },
         onPrivateDns = { showsPrivateDns = true },
+        onDnsBypass = { showsDnsBypass = true },
     )
+
+    if (showsDnsBypass && ui.showsDnsBypassWarning) {
+        val context = LocalContext.current
+        DnsBypassDialog(
+            onOpenSettings = {
+                showsDnsBypass = false
+                openNetworkSettings(context)
+            },
+            onDismiss = { showsDnsBypass = false },
+        )
+    }
 
     if (showsPrivateDns && ui.privateDnsHost != null) {
         val context = LocalContext.current
@@ -216,6 +232,7 @@ fun JetBoxHomeLayout(
     onOpenDetails: () -> Unit,
     onUpdate: () -> Unit = {},
     onPrivateDns: () -> Unit = {},
+    onDnsBypass: () -> Unit = {},
 ) {
     val c = JetBoxTheme.colors
     val phase = ui.phase
@@ -295,6 +312,20 @@ fun JetBoxHomeLayout(
                 )
             }
 
+            // DNS мимо JetBox (канарейка) — то же место и вид, что у частного DNS; обе сразу не показываются.
+            AnimatedVisibility(
+                visible = ui.showsDnsBypassWarning,
+                enter = fadeIn(tween(300)) + expandVertically(tween(300)),
+                exit = fadeOut(tween(300)) + shrinkVertically(tween(300)),
+            ) {
+                JetBoxNoticeCapsule(
+                    stringResource(R.string.jb_dns_bypass_capsule),
+                    dot = c.warn,
+                    onClick = onDnsBypass,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                )
+            }
+
             Box(Modifier.widthIn(max = 420.dp).padding(bottom = 8.dp)) {
                 if (ui.hasBox) {
                     JetBoxHomeDock(ui, nowMillis, onOpen = onOpenDetails)
@@ -356,6 +387,46 @@ fun JetBoxNoticeCapsule(text: String, dot: Color, onClick: () -> Unit, modifier:
         }
     }
 }
+
+/** «DNS идёт мимо JetBox»: что это значит, как исправить и кнопка в настройки сети Android. */
+@Composable
+private fun DnsBypassDialog(onOpenSettings: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.jb_dns_bypass_title)) },
+        text = { Text(stringResource(R.string.jb_dns_bypass_body)) },
+        confirmButton = { TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.jb_private_dns_open)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.jb_close)) } },
+    )
+}
+
+/**
+ * Боевая канарейка: (а) A-запрос прямо в DNS дома по mesh-адресу (UDP 53, через туннель — приложение из своего VPN не
+ * исключено); (б) системный резолвер, как браузер — `InetAddress.getAllByName`, не дольше 3 с.
+ */
+private fun systemDnsCanary() = net.jetnet.jetbox.logic.DnsCanary(
+    name = net.jetnet.jetbox.link.JetBoxConfig.DNS_CHECK_NAME,
+    boxQuery = { ip, name ->
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { net.jetnet.jetbox.logic.DnsCanary.queryA(java.net.InetAddress.getByName(ip), name) }.getOrNull()
+        }
+    },
+    systemResolve = { name ->
+        kotlinx.coroutines.coroutineScope {
+            val lookup = async(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    net.jetnet.jetbox.logic.SystemAnswer.Addresses(java.net.InetAddress.getAllByName(name).mapNotNull { it.hostAddress })
+                } catch (e: java.net.UnknownHostException) {
+                    net.jetnet.jetbox.logic.SystemAnswer.NotFound
+                } catch (e: Exception) {
+                    net.jetnet.jetbox.logic.SystemAnswer.NoAnswer
+                }
+            }
+            kotlinx.coroutines.withTimeoutOrNull(3_000) { lookup.await() }
+                ?: net.jetnet.jetbox.logic.SystemAnswer.NoAnswer.also { lookup.cancel() }
+        }
+    },
+)
 
 /** «Включён частный DNS»: что это значит и кнопка в настройки сети Android. */
 @Composable

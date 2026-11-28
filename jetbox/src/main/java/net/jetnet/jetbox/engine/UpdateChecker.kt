@@ -1,5 +1,7 @@
 package net.jetnet.jetbox.engine
 
+import net.jetnet.jetbox.logic.JetBoxLog
+
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -144,7 +146,7 @@ class UpdateChecker(
             }
             val info = body?.let { UpdateInfo.parse(it) }
             if (info == null) {
-                Log.i(TAG, "JetBox: update check failed, staying quiet")
+                JetBoxLog.i(TAG, "JetBox: update check failed, staying quiet")
                 return
             }
             withContext(io) { kv.putString(K_INFO, info.toJson()) }

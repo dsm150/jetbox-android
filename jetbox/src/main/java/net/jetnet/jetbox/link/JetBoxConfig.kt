@@ -36,6 +36,12 @@ object JetBoxConfig {
      */
     const val ACCOUNT_DELETE_URL = "https://box.jet-net.net/account/delete"
 
+    /** Почта поддержки по умолчанию — пока Кабинет не прислал свою (`support_email`). */
+    const val SUPPORT_EMAIL = "help@jet-net.net"
+
+    /** Имя-канарейка проверки «DNS мимо JetBox» (RU; коробка отвечает меткой 192.0.2.53 на него и поддомены). */
+    const val DNS_CHECK_NAME = "dnscheck.jet-net.net"
+
     const val PRIVACY_POLICY_URL = "https://jet-net.net/privacy"
     const val SITE_URL = "https://jet-net.net"
 

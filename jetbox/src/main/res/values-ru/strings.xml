@@ -144,7 +144,7 @@
     <string name="jb_login_code_err_no_attempts">Неверный код, попыток больше нет. Запросите новый код.</string>
     <string name="jb_login_code_err_expired">Код устарел. Запросите новый.</string>
     <string name="jb_login_code_err_used">Этот код уже использован. Запросите новый.</string>
-    <string name="jb_login_code_err_device_limit">На вашей учётной записи уже 2 устройства. Отключите одно или попросите администратора добавить.</string>
+    <string name="jb_login_code_err_device_limit">Достигнут предел устройств. Выйдите из JetBox на другом устройстве или попросите администратора добавить место.</string>
     <string name="jb_login_code_err_not_available">Подключение сейчас недоступно. Попробуйте позже или напишите в поддержку JetBox.</string>
     <string name="jb_login_code_err_try_again">JetBox не успел ответить. Попробуйте ещё раз.</string>
     <string name="jb_login_code_new">Прислать новый код</string>
@@ -172,4 +172,22 @@
     <string name="jb_delete_account_failed">Не получилось удалить аккаунт: JetBox не ответил. Попробуйте ещё раз.</string>
     <string name="jb_account_deleted_title">Аккаунт удалён</string>
     <string name="jb_account_deleted_body">Все ваши устройства отключены, вход в приложение и в Личный кабинет закрыт.</string>
+    <!-- DNS мимо JetBox — канарейка (спека 2026-11-28-app-help-and-dns-check §3, §5). -->
+    <string name="jb_dns_bypass_capsule">DNS мимо JetBox: реклама не блокируется</string>
+    <string name="jb_dns_bypass_title">DNS идёт мимо JetBox</string>
+    <string name="jb_dns_bypass_body">Адреса сайтов узнаются мимо JetBox — реклама и трекеры не блокируются. Как исправить: в настройках телефона выключите «Частный DNS» (Сеть и интернет или «Подключение и общий доступ» → Частный DNS → «Выкл.» или «Автоматически»); в браузере выключите «Безопасный DNS»; уберите сторонние приложения-DNS.</string>
+    <string name="jb_help">Помощь</string>
+    <string name="jb_help_title">Напишите нам</string>
+    <string name="jb_help_field">Опишите, что случилось</string>
+    <string name="jb_help_attach">Приложить диагностику</string>
+    <string name="jb_help_whats_inside">Что входит в диагностику</string>
+    <string name="jb_help_send">Отправить</string>
+    <string name="jb_help_sending">Отправляем…</string>
+    <string name="jb_help_sent">Отправлено. Ответим в течение часа с 9:00 до 21:00 по Москве.</string>
+    <string name="jb_help_too_long">Слишком длинно. Сократите сообщение и отправьте ещё раз.</string>
+    <string name="jb_help_rate_limited">Вы только что писали. Отправить снова можно через минуту.</string>
+    <string name="jb_help_mail_footer">Откроется почтовое приложение, письмо уйдёт на %1$s.</string>
+    <string name="jb_help_no_mail_app">Почтового приложения нет. Текст скопирован — отправьте его на %1$s.</string>
+    <string name="jb_help_mail_chooser">Написать в поддержку</string>
+    <string name="jb_help_cabinet_footer">Сообщение уйдёт в поддержку JetBox. Ответ придёт на почту, с которой вы вошли.</string>
 </resources>

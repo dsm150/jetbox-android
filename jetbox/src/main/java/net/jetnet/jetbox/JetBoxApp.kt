@@ -34,6 +34,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.MainScope
 import net.jetnet.jetbox.engine.AndroidEngine
+import net.jetnet.jetbox.logic.DiagnosticsScrubber
 import net.jetnet.jetbox.engine.AppLoginApi
 import net.jetnet.jetbox.engine.EmailLoginForm
 import net.jetnet.jetbox.engine.HttpAppLoginApi
@@ -57,6 +58,13 @@ import net.jetnet.jetbox.ui.LocalEmailLogin
 import net.jetnet.jetbox.ui.homeViewModelFactory
 import net.jetnet.jetbox.ui.rememberUrlOpener
 import net.jetnet.jetbox.widget.JetBoxWidget
+import net.jetnet.jetbox.logic.VpnDisplayState
+import net.jetnet.jetbox.ui.JetBoxHelpHooks
+import net.jetnet.jetbox.ui.HomeUiState
+import net.jetnet.jetbox.logic.JetBoxLog
+import net.jetnet.jetbox.logic.DiagnosticsInput
+import net.jetnet.jetbox.logic.Diagnostics
+import net.jetnet.jetbox.engine.SupportSender
 
 /**
  * Что живёт на уровне процесса — как `@StateObject` в `NetBirdApp` (iOS): сценарий по ссылке
@@ -101,9 +109,70 @@ object JetBoxProcess {
                 api = loginApi,
                 scope = MainScope(),
                 // Ссылка из ответа verify (TLS, наш Кабинет) — доверенная: подпись JetBox safety не нужна, как в iOS.
-                onConnectUrl = { url, appToken -> onboarding(app).handle(url, trusted = true, appToken = appToken) },
+                onConnectUrl = { url, appToken ->
+                    onboarding(app).handle(url, trusted = true, appToken = appToken).also { taken ->
+                        // Для диагностики «Помощи» — только маска почты входа.
+                        if (taken) {
+                            JetBoxStore(prefs(app)).loginEmailMasked =
+                                emailLogin?.lastEmail?.takeIf { it.contains('@') }?.let(DiagnosticsScrubber::maskEmail)
+                        }
+                    }
+                },
             ).also { emailLogin = it }
         }
+
+    /**
+     * «Помощь»: канал ([SupportSender]) и снимок диагностики из состояния главного экрана [ui]. Язык — тот, на котором
+     * показан интерфейс (Кабинет отвечает на нём).
+     */
+    fun help(context: Context, ui: HomeUiState): JetBoxHelpHooks {
+        val app = context.applicationContext ?: context
+        val store = JetBoxStore(prefs(app))
+        val version = "${BuildConfig.APP_VERSION_NAME} (${BuildConfig.APP_VERSION_CODE})"
+        val lang = context.resources.configuration.locales[0]?.language ?: "ru"
+        val sender = SupportSender(loginApi, store, version)
+        return JetBoxHelpHooks(
+            viaCabinet = store.appToken != null,
+            mailAddress = sender.address(),
+            diagnostics = { Diagnostics.build(diagnosticsInput(store, ui, lang)) },
+            onSend = { message, diagnostics -> sender.send(message, diagnostics, lang) },
+        )
+    }
+
+    private fun diagnosticsInput(store: JetBoxStore, ui: HomeUiState, lang: String): DiagnosticsInput {
+        val token = store.appToken != null
+        val connected = ui.state == VpnDisplayState.CONNECTED
+        return DiagnosticsInput(
+            appVersion = BuildConfig.APP_VERSION_NAME,
+            appBuild = BuildConfig.APP_VERSION_CODE,
+            store = BuildConfig.STORE,
+            osVersion = "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+            device = deviceName(),
+            language = lang,
+            signIn = when {
+                ui.box == null -> "none"
+                token -> "email"
+                else -> "link"
+            },
+            emailMasked = store.loginEmailMasked.takeIf { token },
+            hasAppToken = token,
+            tunnel = ui.state.name.lowercase() + if (!ui.online) ", offline" else "",
+            homeAnswers = connected && ui.homeAnswered,
+            latencyMs = ui.latencyMs.takeIf { connected },
+            route = ui.route?.name?.lowercase()?.takeIf { connected },
+            uptime = ui.connectedSinceMillis?.takeIf { connected }?.let { uptimeText(System.currentTimeMillis() - it) },
+            exit = ui.selectedExit,
+            exitOff = ui.box != null && ui.selectedExit == null,
+            dnsCheck = ui.dnsCheck,
+            privateDns = ui.privateDnsHost,
+            log = JetBoxLog.last(Diagnostics.LOG_LINES),
+        )
+    }
+
+    private fun uptimeText(ms: Long): String {
+        val m = (ms / 60_000).coerceAtLeast(0)
+        return if (m < 60) "${m}m" else "${m / 60}h ${m % 60}m"
+    }
 
     /** Настройки JetBox (`JetBoxStore.PREFS_NAME`). */
     fun prefs(context: Context): KeyValueStore =
@@ -264,6 +333,7 @@ private fun JetBoxAppContent(onboarding: JetBoxOnboarding, engine: EngineApi, pr
                         null
                     },
                     deleteAccountUrl = net.jetnet.jetbox.link.JetBoxConfig.ACCOUNT_DELETE_URL,
+                    help = remember(ui, onboarding.hasAppToken) { JetBoxProcess.help(context, ui) },
                 )
             }
         }

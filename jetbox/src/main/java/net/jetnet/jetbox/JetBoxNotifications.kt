@@ -1,5 +1,7 @@
 package net.jetnet.jetbox
 
+import net.jetnet.jetbox.logic.JetBoxLog
+
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.pm.PackageManager
@@ -68,7 +70,7 @@ fun NotificationPermissionEffect(protected: Boolean, kv: KeyValueStore) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        Log.i(TAG, "JetBox: notification permission: $granted")
+        JetBoxLog.i(TAG, "JetBox: notification permission: $granted")
     }
     var wasProtected by rememberSaveable { mutableStateOf(protected) }
     var pending by rememberSaveable { mutableStateOf(false) }
@@ -93,7 +95,7 @@ fun NotificationPermissionEffect(protected: Boolean, kv: KeyValueStore) {
             try {
                 launcher.launch(JetBoxNotifications.PERMISSION)
             } catch (e: ActivityNotFoundException) {
-                Log.w(TAG, "JetBox: system notification prompt unavailable")
+                JetBoxLog.w(TAG, "JetBox: system notification prompt unavailable")
                 return@withResumed
             }
             kv.putBoolean(JetBoxNotifications.ASKED_KEY, true)

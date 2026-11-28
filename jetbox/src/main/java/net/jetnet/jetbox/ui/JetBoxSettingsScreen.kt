@@ -133,6 +133,8 @@ fun JetBoxSettingsScreen(
      */
     onDeleteAccount: (suspend () -> Result<Unit>)? = null,
     deleteAccountUrl: String? = null,
+    /** «Помощь» (спека 2026-11-28-app-help-and-dns-check); `null` — пункта нет. */
+    help: JetBoxHelpHooks? = null,
 ) {
     val context = LocalContext.current
     var asksDelete by rememberSaveable { mutableStateOf(false) }
@@ -176,7 +178,7 @@ fun JetBoxSettingsScreen(
     var advancedMode by remember { mutableStateOf(access.isAdvancedMode) }
     var toast by remember { mutableStateOf<String?>(null) }
     var toastToken by remember { mutableIntStateOf(0) }
-    var showsAbout by rememberSaveable { mutableStateOf(false) }
+    var page by rememberSaveable { mutableStateOf(SettingsPage.MAIN) }
 
     // Флаги могли смениться, пока экран был скрыт (расширенный режим, другой экран).
     LifecycleResumeEffect(access) {
@@ -199,19 +201,27 @@ fun JetBoxSettingsScreen(
     }
 
     AnimatedContent(
-        targetState = showsAbout,
+        targetState = page,
         transitionSpec = {
             val spec = tween<androidx.compose.ui.unit.IntOffset>(300)
-            if (targetState) {
+            if (targetState != SettingsPage.MAIN) {
                 (slideInHorizontally(spec) { it } + fadeIn()) togetherWith (slideOutHorizontally(spec) { -it / 3 } + fadeOut())
             } else {
                 (slideInHorizontally(spec) { -it / 3 } + fadeIn()) togetherWith (slideOutHorizontally(spec) { it } + fadeOut())
             }
         },
         label = "settingsNav",
-    ) { about ->
-        if (about) {
-            JetBoxAboutScreen(onBack = { showsAbout = false })
+    ) { shown ->
+        if (shown == SettingsPage.ABOUT) {
+            JetBoxAboutScreen(onBack = { page = SettingsPage.MAIN })
+        } else if (shown == SettingsPage.HELP && help != null) {
+            JetBoxHelpScreen(
+                onBack = { page = SettingsPage.MAIN },
+                viaCabinet = help.viaCabinet,
+                mailAddress = help.mailAddress,
+                diagnostics = help.diagnostics,
+                onSend = help.onSend,
+            )
         } else {
             BackHandler(onBack = onClose)
             JetBoxSettingsLayout(
@@ -235,7 +245,8 @@ fun JetBoxSettingsScreen(
                             show(resources.getString(R.string.jb_settings_advanced_already))
                     }
                 },
-                onOpenAbout = { showsAbout = true },
+                onOpenAbout = { page = SettingsPage.ABOUT },
+                onOpenHelp = help?.let { { page = SettingsPage.HELP } },
                 onOpenAdvanced = {
                     access.isAdvancedMode = true
                     advancedMode = true
@@ -310,6 +321,9 @@ fun JetBoxSettingsScreen(
         )
     }
 }
+
+/** Страницы внутри настроек — `NavigationLink` iOS. */
+private enum class SettingsPage { MAIN, ABOUT, HELP }
 
 /** Подтверждение «Выйти?»: пока идёт выход — кнопки заняты; неудача — строка под текстом. */
 /** «Удалить аккаунт?» — обязательное подтверждение (решение владельца 26.11.2026); неудача — строка под текстом. */
@@ -423,6 +437,7 @@ fun JetBoxSettingsLayout(
     onUpdate: () -> Unit = {},
     onSignOut: (() -> Unit)? = null,
     onDeleteAccount: (() -> Unit)? = null,
+    onOpenHelp: (() -> Unit)? = null,
 ) {
     val c = JetBoxTheme.colors
     JBPage(
@@ -467,6 +482,13 @@ fun JetBoxSettingsLayout(
                         color = c.accent,
                         modifier = Modifier.weight(1f),
                     )
+                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.muted.copy(alpha = 0.6f))
+                }
+            }
+            if (onOpenHelp != null) {
+                JBListDivider()
+                JBListRow(onClick = onOpenHelp) {
+                    Text(stringResource(R.string.jb_help), style = JBType.body, color = c.text, modifier = Modifier.weight(1f))
                     Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.muted.copy(alpha = 0.6f))
                 }
             }

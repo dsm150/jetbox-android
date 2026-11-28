@@ -1,5 +1,7 @@
 package net.jetnet.jetbox
 
+import net.jetnet.jetbox.logic.JetBoxLog
+
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -63,7 +65,7 @@ class JetBoxActivity : AppCompatActivity() {
         val url = LinkIntent.linkFrom(intent.action, intent.dataString, launchedFromHistory) ?: return false
         // Значение ключа в журнал не попадает: сценарий пишет сам — исход разбора и маску ключа.
         val ours = JetBoxProcess.onboarding(this).handle(url)
-        if (!ours) Log.i(TAG, "JetBox: not our link, skipping")
+        if (!ours) JetBoxLog.i(TAG, "JetBox: not our link, skipping")
         // Ссылка разобрана — убираем её из интента окна, чтобы пересоздание не разобрало её снова.
         setIntent(Intent(intent).setAction(Intent.ACTION_MAIN).setData(null))
         return true

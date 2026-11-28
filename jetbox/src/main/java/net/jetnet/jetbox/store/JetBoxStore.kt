@@ -49,7 +49,18 @@ class JetBoxStore(private val kv: KeyValueStore) {
     fun forget() {
         currentBox = null
         appToken = null
+        loginEmailMasked = null
     }
+
+    /** Почта входа — только маской `ab***@домен`, для диагностики «Помощи»; полная почта не хранится. */
+    var loginEmailMasked: String?
+        get() = kv.getString(LOGIN_EMAIL_KEY)
+        set(value) = kv.putString(LOGIN_EMAIL_KEY, value)
+
+    /** Адрес поддержки из ответа Кабинета (`support_email`); пока его нет — [net.jetnet.jetbox.link.JetBoxConfig.SUPPORT_EMAIL]. */
+    var supportEmail: String?
+        get() = kv.getString(SUPPORT_EMAIL_KEY)
+        set(value) = kv.putString(SUPPORT_EMAIL_KEY, value)
 
     fun rememberExitNode(name: String?) {
         val box = currentBox ?: return
@@ -60,5 +71,7 @@ class JetBoxStore(private val kv: KeyValueStore) {
         const val PREFS_NAME = "jetbox"
         private const val BOX_KEY = "jetbox.currentBox"
         private const val APP_TOKEN_KEY = "jetbox.appToken"
+        private const val LOGIN_EMAIL_KEY = "jetbox.loginEmailMasked"
+        private const val SUPPORT_EMAIL_KEY = "jetbox.supportEmail"
     }
 }

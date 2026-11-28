@@ -1,5 +1,7 @@
 package net.jetnet.jetbox.widget
 
+import net.jetnet.jetbox.logic.JetBoxLog
+
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -56,7 +58,7 @@ class JetBoxWidget : AppWidgetProvider() {
                     manager.updateAppWidget(id, views(app, state, manager.getAppWidgetOptions(id)))
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "update failed: ${e.message}")
+                JetBoxLog.w(TAG, "update failed: ${e.message}")
             }
         }
 

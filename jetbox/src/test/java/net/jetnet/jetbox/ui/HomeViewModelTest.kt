@@ -17,6 +17,7 @@ import net.jetnet.jetbox.engine.HomeProbeRunner
 import net.jetnet.jetbox.engine.UpdateChecker
 import net.jetnet.jetbox.engine.UpdateSource
 import net.jetnet.jetbox.logic.UpdateInfo
+import net.jetnet.jetbox.logic.DnsCheck
 import net.jetnet.jetbox.logic.PeerSnapshot
 import net.jetnet.jetbox.logic.PowerAction
 import net.jetnet.jetbox.logic.RouteInfo
@@ -99,6 +100,56 @@ class HomeViewModelTest {
         assertFalse(vm.ui.value.showsPrivateDnsWarning)
         visible.cancel()
         assertFalse("без JetBox — не показываем", HomeUiState(box = null, privateDnsHost = "x").showsPrivateDnsWarning)
+    }
+
+    /**
+     * DNS мимо JetBox (спека 2026-11-28 §3): канарейку спрашиваем только «Под защитой» (дом на связи), по mesh-адресу
+     * дома; BYPASS — капсула, но частный DNS важнее (своя капсула); повтор — по интервалу; ушли из сети — NOT_CHECKED.
+     */
+    @Test fun dnsBypassCheck() = runTest {
+        var verdict = DnsCheck.BYPASS
+        var host: String? = null
+        val asked = mutableListOf<String>()
+        val engine = FakeEngine()
+        val store = JetBoxStore(MemoryStore()).apply { currentBox = box }
+        val vm = HomeViewModel(
+            engine, store, HomeProbeRunner(Probe(24)), backgroundScope as CoroutineScope,
+            privateDns = { host },
+            dnsCanary = { ip -> asked += ip; verdict },
+            dnsCheckIntervalMs = 60_000,
+        )
+        val visible = backgroundScope.launch { vm.whileVisible() }
+        runCurrent()
+        assertEquals("не подключены — не спрашиваем", DnsCheck.NOT_CHECKED, vm.ui.value.dnsCheck)
+        assertTrue(asked.isEmpty())
+
+        engine.connect(peer())
+        runCurrent()
+        assertEquals(listOf("100.64.0.10"), asked)
+        assertEquals(DnsCheck.BYPASS, vm.ui.value.dnsCheck)
+        assertTrue(vm.ui.value.showsDnsBypassWarning)
+
+        verdict = DnsCheck.THROUGH
+        advanceTimeBy(60_001)
+        runCurrent()
+        assertEquals(2, asked.size)
+        assertFalse(vm.ui.value.showsDnsBypassWarning)
+
+        verdict = DnsCheck.BYPASS
+        // Частный DNS включили — перечитываем при смене состояния туннеля (переподключение).
+        host = "dns.google"
+        engine.emit(VpnDisplayState.CONNECTING)
+        runCurrent()
+        engine.connect(peer())
+        runCurrent()
+        assertEquals(DnsCheck.BYPASS, vm.ui.value.dnsCheck)
+        assertTrue("частный DNS — своя капсула", vm.ui.value.showsPrivateDnsWarning)
+        assertFalse(vm.ui.value.showsDnsBypassWarning)
+
+        engine.emit(VpnDisplayState.DISCONNECTED)
+        runCurrent()
+        assertEquals(DnsCheck.NOT_CHECKED, vm.ui.value.dnsCheck)
+        visible.cancel()
     }
 
     @Test fun connecting() = runTest {

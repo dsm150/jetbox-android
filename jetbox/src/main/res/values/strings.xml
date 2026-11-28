@@ -140,7 +140,7 @@
     <string name="jb_login_code_err_no_attempts">Wrong code, and no attempts are left. Request a new code.</string>
     <string name="jb_login_code_err_expired">This code has expired. Request a new one.</string>
     <string name="jb_login_code_err_used">This code was already used. Request a new one.</string>
-    <string name="jb_login_code_err_device_limit">Your account already has 2 devices. Disconnect one or ask your administrator to add more.</string>
+    <string name="jb_login_code_err_device_limit">Device limit reached. Sign out of JetBox on another device or ask your administrator to add a seat.</string>
     <string name="jb_login_code_err_not_available">Connecting isn’t available right now. Try again later or contact JetBox support.</string>
     <string name="jb_login_code_err_try_again">JetBox didn’t respond in time. Try again.</string>
     <string name="jb_login_code_new">Send a new code</string>
@@ -168,4 +168,22 @@
     <string name="jb_delete_account_failed">Couldn’t delete the account: JetBox didn’t respond. Try again.</string>
     <string name="jb_account_deleted_title">Account deleted</string>
     <string name="jb_account_deleted_body">All your devices are disconnected, and sign-in to the app and your JetBox account is closed.</string>
+    <!-- DNS bypasses JetBox — canary (spec 2026-11-28-app-help-and-dns-check §3, §5). -->
+    <string name="jb_dns_bypass_capsule">DNS skips JetBox: ad filtering is off</string>
+    <string name="jb_dns_bypass_title">DNS isn’t going through JetBox</string>
+    <string name="jb_dns_bypass_body">Website addresses are looked up outside JetBox — ads and trackers aren’t filtered. How to fix: turn off Private DNS in your phone settings (Network &amp; internet or Connection &amp; sharing → Private DNS → Off or Automatic); turn off Secure DNS in your browser; remove third-party DNS apps.</string>
+    <string name="jb_help">Help</string>
+    <string name="jb_help_title">Contact us</string>
+    <string name="jb_help_field">Describe what happened</string>
+    <string name="jb_help_attach">Attach diagnostics</string>
+    <string name="jb_help_whats_inside">What diagnostics include</string>
+    <string name="jb_help_send">Send</string>
+    <string name="jb_help_sending">Sending…</string>
+    <string name="jb_help_sent">Sent. We reply within an hour, 9:00–21:00 Moscow time.</string>
+    <string name="jb_help_too_long">Too long. Please shorten the message and send again.</string>
+    <string name="jb_help_rate_limited">You just wrote to us. You can send again in a minute.</string>
+    <string name="jb_help_mail_footer">Your mail app opens and the message goes to %1$s.</string>
+    <string name="jb_help_no_mail_app">No mail app found. The text is copied: send it to %1$s.</string>
+    <string name="jb_help_mail_chooser">Write to support</string>
+    <string name="jb_help_cabinet_footer">The message goes to JetBox support. The reply comes to the email you signed in with.</string>
 </resources>

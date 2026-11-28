@@ -46,6 +46,30 @@ interface AppLoginApi {
      * `409 last_owner` — единственный владелец клиента: ничего не удалено, удалить — через поддержку.
      */
     suspend fun deleteAccount(appToken: String): AccountDeleteResult = AccountDeleteResult.Failed("not supported")
+
+    /**
+     * «Помощь» (спека VPN_Box 2026-11-28-app-help-and-dns-check, §3а): `POST support`, Bearer — сообщение ложится в
+     * тред поддержки клиента в Кабинете. Не вышло — приложение уходит в письмо.
+     */
+    suspend fun support(appToken: String, message: String, diagnostics: String, version: String, lang: String): SupportResult =
+        SupportResult.Failed("not supported", null)
+}
+
+/** Ответ `POST support`. [supportEmail] — адрес поддержки из ответа (Кабинет кладёт его во все ответы), если есть. */
+sealed class SupportResult {
+    abstract val supportEmail: String?
+
+    /** `200 {"ok":true,"promise":…}` — отправлено; [promise] — обещание срока ответа на языке запроса. */
+    data class Sent(val promise: String?, override val supportEmail: String?) : SupportResult()
+
+    /** `413 too_long` — сообщение или диагностика слишком длинные. */
+    data class TooLong(override val supportEmail: String?) : SupportResult()
+
+    /** `429 rate_limited` — повторить через [retryAfterSec]. */
+    data class RateLimited(val retryAfterSec: Int?, override val supportEmail: String?) : SupportResult()
+
+    /** `401 bad_token`, иной ответ или сеть — уходим в письмо. */
+    data class Failed(val details: String, override val supportEmail: String?) : SupportResult()
 }
 
 sealed class AccountDeleteResult {
@@ -219,6 +243,30 @@ class HttpAppLoginApi(
             }
         }
 
+    override suspend fun support(
+        appToken: String,
+        message: String,
+        diagnostics: String,
+        version: String,
+        lang: String,
+    ): SupportResult {
+        val body = JSONObject().put("message", message).put("diagnostics", diagnostics)
+            .put("platform", PLATFORM).put("version", version).put("lang", lang)
+        return when (val r = post(SUPPORT_PATH, body, bearer = appToken)) {
+            is Reply.NoNetwork -> SupportResult.Failed(r.details, null)
+            is Reply.Status -> {
+                val json = jsonOf(r.body)
+                val email = json?.optString("support_email")?.trim()?.takeIf { it.contains('@') }
+                when (r.code) {
+                    in 200..299 -> SupportResult.Sent(json?.optString("promise")?.trim()?.takeIf(String::isNotEmpty), email)
+                    413 -> SupportResult.TooLong(email)
+                    429 -> SupportResult.RateLimited(json?.optInt("retry_after", -1)?.takeIf { it > 0 }, email)
+                    else -> SupportResult.Failed("HTTP ${r.code}", email)
+                }
+            }
+        }
+    }
+
     private fun jsonOf(body: String?): JSONObject? = body?.let { runCatching { JSONObject(it) }.getOrNull() }
 
     private sealed class Reply {
@@ -259,7 +307,7 @@ class HttpAppLoginApi(
             // Тело нужно только у 200 (подключение), 401 (остаток попыток), 409 и 410 (вид отказа).
             val body = when (code) {
                 200 -> conn.inputStream.use(::readLimited)
-                401, 409, 410 -> conn.errorStream?.use(::readLimited)
+                401, 409, 410, 413, 429 -> conn.errorStream?.use(::readLimited)
                 else -> null
             }
             Reply.Status(code, body)
@@ -296,6 +344,9 @@ class HttpAppLoginApi(
 
         /** Удаление аккаунта по токену приложения (06-cabinet.md, «API приложения: вход по email»). */
         const val ACCOUNT_DELETE_PATH = "account/delete"
+
+        /** «Помощь»: сообщение в поддержку из приложения (§3а). */
+        const val SUPPORT_PATH = "support"
         const val TIMEOUT_MS = 15_000
         const val MAX_BYTES = 64 * 1024
     }

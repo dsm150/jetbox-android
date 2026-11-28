@@ -1,5 +1,7 @@
 package net.jetnet.jetbox.engine
 
+import net.jetnet.jetbox.logic.JetBoxLog
+
 import android.app.ForegroundServiceStartNotAllowedException
 import android.content.ComponentName
 import android.content.Context
@@ -139,7 +141,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
             clearTunnelData()
         }
         override fun onError(msg: String?) {
-            Log.w(TAG, "engine error: $msg")
+            JetBoxLog.w(TAG, "engine error: $msg")
             _lastError.value = msg ?: ""
         }
     }
@@ -149,7 +151,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val b = service as? VPNService.MyLocalBinder ?: return
-            Log.d(TAG, "service connected")
+            JetBoxLog.d(TAG, "service connected")
             binder = b
             b.addServiceStateListener(serviceStateListener)
             b.addRouteChangeListener(routeChangeListener)
@@ -181,13 +183,13 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
 
         override fun onServiceDisconnected(name: ComponentName?) {
             // Привязка остаётся: система пришлёт onServiceConnected, когда сервис поднимется снова.
-            Log.d(TAG, "service disconnected")
+            JetBoxLog.d(TAG, "service disconnected")
             binder = null
             setState(VpnDisplayState.DISCONNECTED)
         }
 
         override fun onBindingDied(name: ComponentName?) {
-            Log.w(TAG, "binding died, rebinding")
+            JetBoxLog.w(TAG, "binding died, rebinding")
             binder = null
             synchronized(lock) { bindRequested = false }
             runCatching { app.unbindService(this) }
@@ -232,7 +234,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
                 }
             })
         } catch (e: Exception) {
-            Log.w(TAG, "network callback failed: ${e.message}")
+            JetBoxLog.w(TAG, "network callback failed: ${e.message}")
         }
     }
 
@@ -242,7 +244,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
             bindRequested = app.bindService(
                 Intent(app, VPNService::class.java), connection, Context.BIND_AUTO_CREATE,
             )
-            if (!bindRequested) Log.e(TAG, "bindService failed")
+            if (!bindRequested) JetBoxLog.e(TAG, "bindService failed")
         }
     }
 
@@ -263,7 +265,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
         try {
             block()
         } catch (e: Exception) {
-            Log.w(TAG, "$what failed: ${e.message}")
+            JetBoxLog.w(TAG, "$what failed: ${e.message}")
             _lastError.value = e.message ?: e.toString()
             setState(VpnDisplayState.DISCONNECTED)
         }
@@ -346,8 +348,8 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
                 } catch (e: Exception) {
                     return@withContext Result.failure(e)
                 }
-                IdentityRegistration(swapFor(configPath), processGate) { Log.i(TAG, it) }.forget()
-                    .onFailure { Log.w(TAG, "forget failed: ${it.message}") }
+                IdentityRegistration(swapFor(configPath), processGate) { JetBoxLog.i(TAG, it) }.forget()
+                    .onFailure { JetBoxLog.w(TAG, "forget failed: ${it.message}") }
             }
         }
 
@@ -387,11 +389,11 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
     ): Result<Unit> =
         registerMutex.withLock {
             withContext(Dispatchers.IO) {
-                Log.i(TAG, "register: url=$managementURL key=${maskSecret(setupKey)} fresh=$freshIdentity")
+                JetBoxLog.i(TAG, "register: url=$managementURL key=${maskSecret(setupKey)} fresh=$freshIdentity")
                 val configPath = try {
                     ProfileManagerWrapper(app).activeConfigPath
                 } catch (e: Exception) {
-                    Log.w(TAG, "register failed: ${e.message}")
+                    JetBoxLog.w(TAG, "register failed: ${e.message}")
                     return@withContext Result.failure(asCoreError(e))
                 }
                 val done: () -> Unit = {
@@ -409,8 +411,8 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
                 } else {
                     registerKeepingKey(configPath, managementURL, setupKey, done)
                 }
-                result.exceptionOrNull()?.let { Log.w(TAG, "register failed: ${it.message}") }
-                    ?: Log.i(TAG, "register ok")
+                result.exceptionOrNull()?.let { JetBoxLog.w(TAG, "register failed: ${it.message}") }
+                    ?: JetBoxLog.i(TAG, "register ok")
                 result
             }
         }
@@ -428,7 +430,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
         if (withTimeoutOrNull(BIND_TIMEOUT_MS) { awaitBinder() } == null) {
             return Result.failure(IllegalStateException("VPN service is not bound"))
         }
-        return IdentityRegistration(swapFor(configPath), processGate) { Log.i(TAG, it) }.register(
+        return IdentityRegistration(swapFor(configPath), processGate) { JetBoxLog.i(TAG, it) }.register(
             newFingerprint = JetBoxIdentity.fingerprint(setupKey),
             storedFingerprint = storedFingerprint(),
             login = { login(configPath, managementURL, setupKey) },
@@ -454,7 +456,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
             if (withTimeoutOrNull(BIND_TIMEOUT_MS) { awaitBinder() } == null) {
                 return Result.failure(IllegalStateException("VPN service is not bound"))
             }
-            IdentityRegistration(swap, processGate) { Log.i(TAG, it) }.recoverGuarded(storedFingerprint())
+            IdentityRegistration(swap, processGate) { JetBoxLog.i(TAG, it) }.recoverGuarded(storedFingerprint())
                 .onFailure { return Result.failure(it as? Exception ?: Exception(it)) }
         }
         var previousURL: String? = null
@@ -513,9 +515,9 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
                 setManagementURL(previousURL)
                 commit()
             }
-            Log.i(TAG, "register: server address restored to the previous one")
+            JetBoxLog.i(TAG, "register: server address restored to the previous one")
         } catch (e: Exception) {
-            Log.w(TAG, "register: could not restore the previous server address: ${e.message}")
+            JetBoxLog.w(TAG, "register: could not restore the previous server address: ${e.message}")
         }
     }
 
@@ -539,7 +541,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
             // Идёт замена личности: ядро всё равно откажет (EngineRunner.runClient), а сервис
             // в foreground поднимать незачем.
             if (VPNService.isIdentitySwapInProgress()) {
-                Log.w(TAG, "start: identity swap in progress, refused")
+                JetBoxLog.w(TAG, "start: identity swap in progress, refused")
                 return
             }
             if (VpnService.prepare(app) != null) {
@@ -557,7 +559,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
                 // Android 12+: из фона (окно свёрнуто) запуск FGS запрещён. Это не поломка ядра —
                 // своя метка, сценарий покажет «Не удалось включить защиту» с повтором.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && e is ForegroundServiceStartNotAllowedException) {
-                    Log.w(TAG, "start: foreground service not allowed from background")
+                    JetBoxLog.w(TAG, "start: foreground service not allowed from background")
                     _lastError.value = EngineApi.FOREGROUND_START_NOT_ALLOWED
                     setState(VpnDisplayState.DISCONNECTED)
                     return
@@ -566,9 +568,9 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
             }
             withBinder("start/runEngine") { b ->
                 if (b.isRunning) {
-                    Log.d(TAG, "start: engine already running")
+                    JetBoxLog.d(TAG, "start: engine already running")
                 } else {
-                    Log.i(TAG, "start: runEngine")
+                    JetBoxLog.i(TAG, "start: runEngine")
                     b.runEngine(null, false) // без URLOpener → RunWithoutLogin, браузер не открывается
                 }
             }
@@ -578,7 +580,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
     override fun stop() {
         guarded("stop") {
             withBinder("stop/stopEngine") { b ->
-                Log.i(TAG, "stop: stopEngine")
+                JetBoxLog.i(TAG, "stop: stopEngine")
                 b.stopEngine()
             }
         }
@@ -590,7 +592,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
             b.selectRoute(name)
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.w(TAG, "selectRoute($name) failed: ${e.message}")
+            JetBoxLog.w(TAG, "selectRoute($name) failed: ${e.message}")
             Result.failure(asCoreError(e))
         } finally {
             refresh()
@@ -603,7 +605,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
             b.deselectRoute(name)
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.w(TAG, "deselectRoute($name) failed: ${e.message}")
+            JetBoxLog.w(TAG, "deselectRoute($name) failed: ${e.message}")
             Result.failure(asCoreError(e))
         } finally {
             refresh()
@@ -691,7 +693,7 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
         try {
             block()
         } catch (e: Exception) {
-            Log.w(TAG, "$what failed: ${e.message}")
+            JetBoxLog.w(TAG, "$what failed: ${e.message}")
         }
     }
 
@@ -722,30 +724,30 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
         fun recoverIdentityFiles(context: Context) {
             if (VPNService.isIdentitySwapInProgress()) return
             if (instance?.binder?.isRunning == true) {
-                Log.i(TAG, "identity swap leftovers: engine running, cleanup postponed until registration")
+                JetBoxLog.i(TAG, "identity swap leftovers: engine running, cleanup postponed until registration")
                 return
             }
             val pending = try {
                 ProfileFilesSwap.findPending(context.filesDir)
             } catch (e: Exception) {
-                Log.w(TAG, "could not look for identity swap leftovers: ${e.message}")
+                JetBoxLog.w(TAG, "could not look for identity swap leftovers: ${e.message}")
                 return
             }
             if (pending.isEmpty()) return
             val stored = try {
                 JetBoxStore(JetBoxProcess.prefs(context)).currentBox?.setupKeyFingerprint
             } catch (e: Exception) {
-                Log.w(TAG, "identity swap leftovers: store unreadable: ${e.message}")
+                JetBoxLog.w(TAG, "identity swap leftovers: store unreadable: ${e.message}")
                 return
             }
             for (p in pending) {
                 try {
-                    val swap = ProfileFilesSwap.fromPending(p) { Log.w(TAG, it) }
+                    val swap = ProfileFilesSwap.fromPending(p) { JetBoxLog.w(TAG, it) }
                     val outcome = IdentityRegistration.recover(swap, stored)
-                    Log.i(TAG, "leftovers of an interrupted identity swap (${p.name}): $outcome")
+                    JetBoxLog.i(TAG, "leftovers of an interrupted identity swap (${p.name}): $outcome")
                 } catch (e: Exception) {
                     // Остатки этой метки остаются; следующая регистрация начнёт с их разбора.
-                    Log.w(TAG, "could not clean up identity swap leftovers (${p.name}): ${e.message}")
+                    JetBoxLog.w(TAG, "could not clean up identity swap leftovers (${p.name}): ${e.message}")
                 }
             }
         }
