@@ -416,6 +416,9 @@ private fun vpnNetwork(context: Context): android.net.Network? {
     }.getOrNull()
 }
 
+private const val DNS_TAG = "JetBoxDns"
+private const val SYSTEM_RESOLVE_TIMEOUT_MS = 8_000L
+
 private fun systemDnsCanary(context: Context) = net.jetnet.jetbox.logic.DnsCanary(
     name = net.jetnet.jetbox.link.JetBoxConfig.DNS_CHECK_NAME,
     boxQuery = { ip, name ->
@@ -425,9 +428,10 @@ private fun systemDnsCanary(context: Context) = net.jetnet.jetbox.logic.DnsCanar
     },
     systemResolve = { name ->
         kotlinx.coroutines.coroutineScope {
+            val started = android.os.SystemClock.elapsedRealtime()
             val lookup = async(kotlinx.coroutines.Dispatchers.IO) {
+                val vpn = vpnNetwork(context)
                 try {
-                    val vpn = vpnNetwork(context)
                     // Нет доступа к сети VPN (например, приложение вне своего туннеля) — обычный резолвер.
                     val found = vpn?.let { n -> runCatching { n.getAllByName(name) }.getOrElse { e -> if (e is java.net.UnknownHostException) throw e else null } }
                         ?: java.net.InetAddress.getAllByName(name)
@@ -435,11 +439,19 @@ private fun systemDnsCanary(context: Context) = net.jetnet.jetbox.logic.DnsCanar
                 } catch (e: java.net.UnknownHostException) {
                     net.jetnet.jetbox.logic.SystemAnswer.NotFound
                 } catch (e: Exception) {
+                    net.jetnet.jetbox.logic.JetBoxLog.w(DNS_TAG, "DNS check: system resolver failed: ${e.javaClass.simpleName}")
                     net.jetnet.jetbox.logic.SystemAnswer.NoAnswer
+                }.also {
+                    val ms = android.os.SystemClock.elapsedRealtime() - started
+                    net.jetnet.jetbox.logic.JetBoxLog.i(DNS_TAG, "DNS check: system resolver ${it.javaClass.simpleName} in $ms ms, via VPN network: ${if (vpn != null) "yes" else "no"}")
                 }
             }
-            kotlinx.coroutines.withTimeoutOrNull(3_000) { lookup.await() }
-                ?: net.jetnet.jetbox.logic.SystemAnswer.NoAnswer.also { lookup.cancel() }
+            // Частный DNS (DoT) в первый раз отвечает дольше обычного — ждём до 8 с.
+            kotlinx.coroutines.withTimeoutOrNull(SYSTEM_RESOLVE_TIMEOUT_MS) { lookup.await() }
+                ?: net.jetnet.jetbox.logic.SystemAnswer.NoAnswer.also {
+                    lookup.cancel()
+                    net.jetnet.jetbox.logic.JetBoxLog.w(DNS_TAG, "DNS check: system resolver timed out")
+                }
         }
     },
 )
