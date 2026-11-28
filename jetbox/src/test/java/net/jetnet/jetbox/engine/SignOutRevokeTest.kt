@@ -115,7 +115,7 @@ class SignOutRevokeTest {
         env.signedIn("jbd_t")
         assertTrue(signOut(env).exceptionOrNull() is JetBoxOnboarding.RevokeFailed)
         assertEquals(0, env.engine.forgetCalls)
-        assertTrue(env.logs.any { "не ответил" in it })
+        assertTrue(env.logs.any { "did not answer" in it })
     }
 
     /** Подключение по ссылке или QR — токена нет: Кабинет не трогаем, выход локальный. */

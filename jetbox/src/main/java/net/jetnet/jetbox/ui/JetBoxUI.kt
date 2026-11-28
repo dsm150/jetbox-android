@@ -162,6 +162,6 @@ fun Context.openUrl(url: String) {
     try {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (e: ActivityNotFoundException) {
-        Log.w("JetBox", "нет приложения для открытия ссылки: $url")
+        Log.w("JetBox", "no app to open the link: $url")
     }
 }

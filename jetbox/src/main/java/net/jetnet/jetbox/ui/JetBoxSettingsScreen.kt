@@ -104,7 +104,7 @@ fun Context.openUpstreamMainActivity() {
     try {
         startActivity(Intent().setClassName(packageName, UPSTREAM_MAIN_ACTIVITY))
     } catch (e: ActivityNotFoundException) {
-        Log.w("JetBox", "нет $UPSTREAM_MAIN_ACTIVITY в сборке")
+        Log.w("JetBox", "no $UPSTREAM_MAIN_ACTIVITY in the build")
     }
 }
 

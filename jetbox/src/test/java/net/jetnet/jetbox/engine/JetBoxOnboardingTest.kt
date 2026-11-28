@@ -205,7 +205,7 @@ class JetBoxOnboardingTest {
         advanceUntilIdle()
 
         assertEquals("«под защитой» не говорим, ждёт главный экран", Step.Idle, env.ob.step.value)
-        assertTrue(env.logs.any { "дом не ответил" in it })
+        assertTrue(env.logs.any { "home did not answer" in it })
         assertEquals("туннель не гасим", 0, env.engine.stopCalls)
         assertEquals("home-exit", env.store.currentBox?.selectedExitNode)
     }
@@ -712,7 +712,7 @@ class JetBoxOnboardingTest {
         assertEquals(1, env.engine.stopCalls)
         assertEquals(1, env.engine.startCalls)
         assertEquals(oldBox, env.store.currentBox)
-        assertTrue(env.logs.any { it.contains("возвращаем прежний JetBox") })
+        assertTrue(env.logs.any { it.contains("restoring the previous JetBox") })
     }
 
     @Test fun failedSwitchDoesNotRestartOldTunnelWithoutVpnConsent() = runTest {
@@ -892,7 +892,7 @@ class JetBoxOnboardingTest {
         assertEquals(JetBoxIdentity.fingerprint(otherKey), env.store.currentBox?.setupKeyFingerprint)
         assertEquals("ядро создало новый конфиг — новый ключ", "key=$otherKey", env.engine.deviceKey())
         assertFalse("остатков замены нет", env.engine.swap().hasLeftovers())
-        assertTrue(env.logs.any { it.contains("новую личность устройства") })
+        assertTrue(env.logs.any { it.contains("new device identity") })
         assertFalse("ключ в журнал не попадает", env.logs.any { it.contains(otherKey) })
     }
 
@@ -1098,7 +1098,7 @@ class JetBoxOnboardingTest {
 
         val step = env.ob.step.value
         assertTrue("$step", step is Step.Failed && step.failure is JetBoxFailure.Other)
-        assertTrue((step as Step.Failed).failure.details!!.contains("прежнее подключение"))
+        assertTrue((step as Step.Failed).failure.details!!.contains("previous connection"))
         assertTrue(step.failure.canRetry)
         assertEquals("туннель не поднят", 0, env.engine.startCalls)
         assertTrue(env.engine.swap().hasLeftovers())
@@ -1194,7 +1194,7 @@ class JetBoxOnboardingTest {
         assertEquals(Step.Idle, env.ob.step.value)
         assertTrue(env.engine.swap().hasLeftovers())
         assertEquals("туннель не поднят", 0, env.engine.startCalls)
-        assertTrue(env.logs.any { it.contains("не до конца") })
+        assertTrue(env.logs.any { it.contains("not fully restored") })
 
         // Новая попытка начинает с разбора остатков.
         env.engine.failDelete = { false }
@@ -1390,7 +1390,7 @@ class JetBoxOnboardingTest {
         advanceUntilIdle()
         val step = env.ob.step.value
         assertTrue("$step", step is Step.Failed && step.failure is JetBoxFailure.Other)
-        assertTrue((step as Step.Failed).failure.details!!.contains("прежнее подключение"))
+        assertTrue((step as Step.Failed).failure.details!!.contains("previous connection"))
         assertEquals(0, env.engine.startCalls)
         assertTrue(env.engine.swap().hasLeftovers())
         // Повтор не доделывает прерванную замену: кнопки нет, а retry() закрывает экран.
@@ -1470,7 +1470,7 @@ class JetBoxOnboardingTest {
         assertEquals(Step.Idle, env.ob.step.value)
         assertEquals(1, env.engine.startCalls)
         assertEquals("key=$otherKey", env.engine.deviceKey())
-        assertTrue(env.logs.any { it.contains("прежнего уже нет") })
+        assertTrue(env.logs.any { it.contains("the previous one is gone") })
     }
 
     // endregion
@@ -1624,7 +1624,7 @@ class JetBoxOnboardingTest {
         advanceUntilIdle()
         val step = env.ob.step.value
         assertTrue("$step", step is Step.Failed && step.failure is JetBoxFailure.Other)
-        assertTrue((step as Step.Failed).failure.details!!.contains("вручную"))
+        assertTrue((step as Step.Failed).failure.details!!.contains("manually"))
         assertFalse(step.failure.canRetry)
         assertEquals(0, env.engine.startCalls)
     }

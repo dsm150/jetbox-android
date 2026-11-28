@@ -38,7 +38,7 @@ class ProfileFilesSwap(
     private val deleter: (File) -> Boolean = { it.delete() },
 ) {
     init {
-        require(files.isNotEmpty()) { "нет файлов профиля" }
+        require(files.isNotEmpty()) { "no profile files" }
     }
 
     private val primary: File get() = files.first()
@@ -66,13 +66,13 @@ class ProfileFilesSwap(
      */
     @Throws(IOException::class)
     fun stash(newFingerprint: String) {
-        if (hasLeftovers()) throw IOException("остатки прошлой замены не разобраны")
+        if (hasLeftovers()) throw IOException("leftovers of a previous swap not cleaned up")
         writePending(newFingerprint)
         for (f in files) {
             if (f.exists()) {
                 move(f, backupOf(f))
             } else if (!markerOf(f).createNewFile() && !markerOf(f).exists()) {
-                throw IOException("не удалось создать маркер ${markerOf(f).name}")
+                throw IOException("could not create marker ${markerOf(f).name}")
             }
         }
         syncDir()
@@ -140,7 +140,7 @@ class ProfileFilesSwap(
         repeat(2) {
             if (!f.exists() || deleter(f) || !f.exists()) return
         }
-        throw IOException("не удалось удалить ${f.name}")
+        throw IOException("could not delete ${f.name}")
     }
 
     private fun writePending(fingerprint: String) {
@@ -211,13 +211,13 @@ class ProfileFilesSwap(
             val recorded = readPending(pending)?.second
             val files = recorded?.map { File(dir, File(it).name) }?.takeIf { it.firstOrNull()?.name == config.name }
             if (files == null) {
-                log("метка ${pending.name}: список файлов не прочитан или первым не конфиг — разбираем только конфиг")
+                log("marker ${pending.name}: file list unreadable or config not first, recovering config only")
                 return ProfileFilesSwap(listOf(config))
             }
             recorded.map { File(it).absoluteFile.parentFile?.path }.distinct()
                 .filter { it != dir?.path }
                 .takeIf { it.isNotEmpty() }
-                ?.let { log("метка ${pending.name}: файлы записаны в $it, разбираем в ${dir?.path}") }
+                ?.let { log("marker ${pending.name}: files written to $it, recovering in ${dir?.path}") }
             return ProfileFilesSwap(listOf(config) + files.drop(1))
         }
 

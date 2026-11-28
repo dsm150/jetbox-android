@@ -157,14 +157,14 @@ class JetBoxOnboarding(
 
             // JetBox safety: подписи нет или она не наша — ни вопроса, ни регистрации, подключение не трогаем.
             JetBoxLink.Outcome.Unsigned -> {
-                log("JetBox: у ссылки нет верной подписи, в сеть не идём")
+                log("JetBox: link signature missing or invalid, not going online")
                 cancelFlow()
                 _step.value = Step.Failed(JetBoxFailure.NotFromJetBox)
                 return true
             }
 
             JetBoxLink.Outcome.Broken -> {
-                log("JetBox: ссылка не проходит проверку формата, в сеть не идём")
+                log("JetBox: link fails format check, not going online")
                 cancelFlow()
                 _step.value = Step.Failed(JetBoxFailure.BrokenLink)
                 return true
@@ -172,7 +172,7 @@ class JetBoxOnboarding(
 
             // До любого вопроса («Другой JetBox») и действия: в сеть не идём, подключение не трогаем.
             JetBoxLink.Outcome.ForeignServer -> {
-                log("JetBox: адрес management вне маски *${JetBoxConfig.MANAGEMENT_SUFFIX} — ссылка не на сервер JetBox, в сеть не идём")
+                log("JetBox: management address outside *${JetBoxConfig.MANAGEMENT_SUFFIX}, not a JetBox server, not going online")
                 cancelFlow()
                 _step.value = Step.Failed(JetBoxFailure.ForeignServer)
                 return true
@@ -183,7 +183,7 @@ class JetBoxOnboarding(
                 val payload = outcome.payload.copy(appToken = appToken.takeIf { trusted })
                 // Повторное открытие той же ссылки посреди сценария не откатывает его в начало.
                 if (activePayload == payload && !isRestartable) return true
-                log("JetBox: ссылка принята, объект ${payload.displayName}, ключ ${payload.maskedKey}")
+                log("JetBox: link accepted, site ${payload.displayName}, key ${payload.maskedKey}")
                 cancelFlow()
                 lastPayload = payload
 
@@ -285,15 +285,15 @@ class JetBoxOnboarding(
         val token = store.appToken ?: return Result.failure(IllegalStateException("no app token"))
         val api = login ?: return Result.failure(IllegalStateException("no login api"))
         when (val r = api.deleteAccount(token)) {
-            AccountDeleteResult.Deleted -> log("JetBox: удаление аккаунта — Кабинет удалил человека целиком")
+            AccountDeleteResult.Deleted -> log("JetBox: account deletion: the Cabinet removed the person entirely")
             // 401 сразу после нашего же запроса — обычно аккаунт уже удалён (первый ответ потерялся при обрыве туннеля).
-            AccountDeleteResult.Unauthorized -> log("JetBox: удаление аккаунта — Кабинет токен не знает (401): аккаунт уже удалён, выходим")
+            AccountDeleteResult.Unauthorized -> log("JetBox: account deletion: token unknown to the Cabinet (401), account already deleted, signing out")
             is AccountDeleteResult.LastOwner -> {
-                log("JetBox: удаление аккаунта — единственный владелец клиента (409), ничего не удалено")
+                log("JetBox: account deletion: the only owner of the client (409), nothing deleted")
                 return Result.failure(LastOwner(r.support))
             }
             is AccountDeleteResult.Failed -> {
-                log("JetBox: удаление аккаунта не удалось: ${r.details}")
+                log("JetBox: account deletion failed: ${r.details}")
                 return Result.failure(AccountDeleteFailed(r.details))
             }
         }
@@ -316,16 +316,16 @@ class JetBoxOnboarding(
         if (engine.isRunning() || engine.state.value != VpnDisplayState.DISCONNECTED) {
             engine.stop()
             if (withTimeoutOrNull(stopTimeoutMs) { awaitStopped() } == null) {
-                log("JetBox: выход — туннель не остановился, ничего не стёрто")
+                log("JetBox: sign out: tunnel did not stop, nothing erased")
                 return Result.failure(IdentityRegistration.EngineStillRunning())
             }
         }
         engine.forgetDevice().onFailure {
-            log("JetBox: выход — файлы профиля не стёрты: ${it.message}")
+            log("JetBox: sign out: profile files not erased: ${it.message}")
             return Result.failure(it)
         }
         store.forget()
-        log("JetBox: выход — подключение на телефоне стёрто")
+        log("JetBox: sign out: connection erased on this phone")
         return Result.success(Unit)
     }
 
@@ -335,17 +335,17 @@ class JetBoxOnboarding(
      */
     private suspend fun revokeInCabinet(): RevokeFailed? {
         val token = store.appToken ?: run {
-            log("JetBox: выход — токена приложения нет (подключение по ссылке), только на телефоне")
+            log("JetBox: sign out: no app token (connected by link), this phone only")
             return null
         }
         val api = login ?: return null
         return when (val result = withTimeoutOrNull(revokeTimeoutMs) { api.revokeDevice(token) }) {
-            DeviceRevokeResult.Revoked -> null.also { log("JetBox: выход — Кабинет отозвал устройство, место освобождено") }
-            DeviceRevokeResult.AlreadyRevoked -> null.also { log("JetBox: выход — Кабинет не знает токена (401), выход на телефоне") }
+            DeviceRevokeResult.Revoked -> null.also { log("JetBox: sign out: the Cabinet revoked the device, spot freed") }
+            DeviceRevokeResult.AlreadyRevoked -> null.also { log("JetBox: sign out: token unknown to the Cabinet (401), signing out on this phone") }
             is DeviceRevokeResult.Failed -> RevokeFailed(result.details)
-                .also { log("JetBox: выход — Кабинет не отозвал устройство (${result.details}), ничего не стёрто") }
+                .also { log("JetBox: sign out: the Cabinet did not revoke the device (${result.details}), nothing erased") }
             null -> RevokeFailed("timeout")
-                .also { log("JetBox: выход — Кабинет не ответил за ${revokeTimeoutMs / 1000} с, ничего не стёрто") }
+                .also { log("JetBox: sign out: the Cabinet did not answer within ${revokeTimeoutMs / 1000} s, nothing erased") }
         }
     }
 
@@ -388,22 +388,22 @@ class JetBoxOnboarding(
         // Новая ссылка — новый ключ WireGuard: иначе management узнает прежний пир и setup key
         // (его группы) не применит. Повтор той же ссылки — прежний ключ.
         val fresh = JetBoxIdentity.plan(current, payload, engine.hasDeviceConfig()) == JetBoxIdentity.Plan.FRESH
-        if (fresh) log("JetBox: новая ссылка — регистрируем новую личность устройства")
+        if (fresh) log("JetBox: new link, registering a new device identity")
         // Остатки оборванной замены регистрация разбирает первой (и при прежнем ключе) — только при
         // остановленном ядре: файлы профиля нельзя менять под ним.
         val unfinished = engine.hasUnfinishedSwap()
-        if (unfinished) log("JetBox: остатки оборванной замены подключения — разберём перед входом")
+        if (unfinished) log("JetBox: leftovers of an interrupted connection swap, cleaning up before sign-in")
         val swap = Swap()
         val registered = try {
             if ((switching || fresh || unfinished) &&
                 (engine.isRunning() || engine.state.value != VpnDisplayState.DISCONNECTED)
             ) {
                 swap.stopped = true
-                log("JetBox: замена подключения — останавливаем прежний туннель")
+                log("JetBox: connection swap: stopping the previous tunnel")
                 engine.stop()
                 if (withTimeoutOrNull(stopTimeoutMs) { awaitStopped() } == null) {
                     // Ядро не вышло — оно и работает: второй раз не запускаем, регистрацию не начинаем.
-                    log("JetBox: прежний туннель не остановился за ${stopTimeoutMs / 1000} с")
+                    log("JetBox: previous tunnel did not stop within ${stopTimeoutMs / 1000} s")
                     _step.value = Step.Failed(JetBoxFailure.TunnelFailed)
                     return
                 }
@@ -419,7 +419,7 @@ class JetBoxOnboarding(
             // правим его, только если возврат не удался, а на экране отказ ссылки («Подключение не изменено»).
             // Туннель до сценария был выключен — returnPrevious делать нечего, но откат файлов мог не удаться.
             withContext(NonCancellable) {
-                val problem = returnPrevious(swap, "сценарий прерван")
+                val problem = returnPrevious(swap, "flow interrupted")
                     ?: RESTORE_INCOMPLETE.takeIf { engine.hasUnfinishedSwap() }
                 val shown = (_step.value as? Step.Failed)?.failure
                 if (problem != null && (shown == JetBoxFailure.ForeignServer || shown == JetBoxFailure.BrokenLink ||
@@ -435,11 +435,11 @@ class JetBoxOnboarding(
         registered.exceptionOrNull()?.let { e ->
             if (e is IdentityRegistration.RestoreFailed) {
                 // На диске ни прежняя, ни новая личность — туннель не поднимаем.
-                log("JetBox: прежнее подключение не вернулось: ${e.message}")
+                log("JetBox: previous connection not restored: ${e.message}")
                 _step.value = Step.Failed(JetBoxFailure.Other(e.message ?: ""))
                 return
             }
-            val problem = withContext(NonCancellable) { returnPrevious(swap, "переключение не удалось") }
+            val problem = withContext(NonCancellable) { returnPrevious(swap, "switch failed") }
             // Экран закрыли или пришла другая ссылка, пока возвращали туннель — их шаг не перетираем.
             currentCoroutineContext().ensureActive()
             if (problem != null) {
@@ -452,7 +452,7 @@ class JetBoxOnboarding(
             )
             return
         }
-        log("JetBox: устройство зарегистрировано на объекте")
+        log("JetBox: device registered on the site")
 
         // 3. Android: системное согласие на VPN.
         if (engine.needsVpnConsent() != null) {
@@ -462,7 +462,7 @@ class JetBoxOnboarding(
             val granted = answer.await()
             consent = null
             if (!granted) {
-                log("JetBox: в системном диалоге VPN отказано")
+                log("JetBox: VPN consent denied in the system dialog")
                 _step.value = Step.Failed(JetBoxFailure.VpnPermissionDenied)
                 return
             }
@@ -479,7 +479,7 @@ class JetBoxOnboarding(
         // клиент включит сам (как iOS). Экран — по фактическому выходу: выбранный руками раньше ядро
         // применяет само, и «интернет идёт как обычно» тогда было бы неправдой.
         if (!payload.enablesDefaultExit) {
-            log("JetBox: x=0 — выход в интернет не включаем")
+            log("JetBox: x=0, internet exit not enabled")
             val routes = withTimeoutOrNull(routesTimeoutMs) { awaitExitRoutes() } ?: engine.routes.value
             protect(payload, routes.firstOrNull { it.isExitNode && it.selected }?.name)
             return
@@ -491,7 +491,7 @@ class JetBoxOnboarding(
                 protect(payload, outcome.name)
             }
             is ExitOutcome.Ambiguous -> {
-                log("JetBox: выход из ссылки не найден, показываем выбор (${outcome.options.size} вариантов)")
+                log("JetBox: exit from the link not found, showing a choice (${outcome.options.size} options)")
                 _step.value = Step.ChooseExit(payload, outcome.options)
             }
             ExitOutcome.None -> protect(payload, null)
@@ -538,11 +538,11 @@ class JetBoxOnboarding(
         if (!swap.stopped || swap.returned) return null
         swap.returned = true
         if (!swap.stopCompleted && withTimeoutOrNull(stopTimeoutMs) { awaitStopped() } == null) {
-            log("JetBox: $why, а прежний туннель так и не остановился — не запускаем, просим включить вручную")
+            log("JetBox: $why and the previous tunnel never stopped, not starting, asking to turn on manually")
             return STOP_TIMEOUT
         }
         if (swap.committed.get()) {
-            log("JetBox: $why после записи нового подключения — прежнего уже нет, поднимаем новое")
+            log("JetBox: $why after the new connection was written, the previous one is gone, starting the new one")
             if (engine.needsVpnConsent() == null && !engine.isRunning()) engine.start()
             return null
         }
@@ -556,10 +556,10 @@ class JetBoxOnboarding(
      */
     private suspend fun restartPrevious(why: String): Boolean {
         if (engine.hasUnfinishedSwap()) {
-            log("JetBox: $why, а прежние файлы профиля вернулись не до конца — туннель не поднимаем")
+            log("JetBox: $why and previous profile files were not fully restored, not starting the tunnel")
             return false
         }
-        log("JetBox: $why — возвращаем прежний JetBox")
+        log("JetBox: $why, restoring the previous JetBox")
         // Ядро уже подняли мимо сценария (always-on, плитка): второй start() стёр бы пиры и маршруты.
         if (engine.needsVpnConsent() == null && !engine.isRunning()) engine.start()
         return true
@@ -586,7 +586,7 @@ class JetBoxOnboarding(
             Tunnel.Up -> null
             is Tunnel.Down -> outcome.failure
             null -> {
-                log("JetBox: туннель не поднялся за ${tunnelTimeoutMs / 1000} с")
+                log("JetBox: tunnel did not come up within ${tunnelTimeoutMs / 1000} s")
                 JetBoxFailure.TunnelFailed
             }
         }
@@ -601,7 +601,7 @@ class JetBoxOnboarding(
             if (error == null) {
                 stale = null
             } else if (error != stale) {
-                log("JetBox: туннель не поднялся: $error")
+                log("JetBox: tunnel did not come up: $error")
                 val failure = when (error) {
                     EngineApi.VPN_PERMISSION_REQUIRED -> JetBoxFailure.VpnPermissionDenied
                     // Окно свернули (например, «Назад» во время регистрации) — Android 12+ не дал
@@ -613,7 +613,7 @@ class JetBoxOnboarding(
                 return Tunnel.Down(failure)
             }
             if (!loginLatched && engine.isLoginRequired()) {
-                log("JetBox: ядро требует вход — ключ не принят")
+                log("JetBox: engine requires login, key not accepted")
                 return Tunnel.Down(JetBoxFailure.KeyRejected(null))
             }
             // Просыпаемся на смену состояния/ошибки; isLoginRequired потока не имеет — опрос.
@@ -640,7 +640,7 @@ class JetBoxOnboarding(
         if (outcome is ExitOutcome.Selected) {
             routes.firstOrNull { it.name == outcome.name }?.let { select(it) }
             if (outcome.name != payload.exitNodeName) {
-                log("JetBox: выход выбран автоматически — единственный доступный")
+                log("JetBox: exit selected automatically, the only one available")
             }
         }
         return outcome
@@ -655,7 +655,7 @@ class JetBoxOnboarding(
         if (!LiveStats.homeAnswered(engine.peers.value)) {
             _step.value = Step.Connecting(payload)
             if (withTimeoutOrNull(homeTimeoutMs) { awaitHome() } == null) {
-                log("JetBox: дом не ответил за ${homeTimeoutMs / 1000} с — экран закрыт, ждёт главный экран")
+                log("JetBox: home did not answer within ${homeTimeoutMs / 1000} s, screen closed, home screen keeps waiting")
                 _step.value = Step.Idle
                 return
             }
@@ -689,7 +689,7 @@ class JetBoxOnboarding(
         if (route.selected) return
         engine.selectRoute(route.name).exceptionOrNull()?.let {
             // Как iOS (setExitNode без результата): сценарий не валим, но фиксируем.
-            log("JetBox: выбор выхода ${route.name} не удался: ${it.message}")
+            log("JetBox: selecting exit ${route.name} failed: ${it.message}")
         }
         // Дать ядру применить маршрут до того, как экран скажет «под защитой».
         delay(SELECT_SETTLE_MS)
@@ -728,9 +728,9 @@ class JetBoxOnboarding(
         private const val SELECT_SETTLE_MS = 700L
         private const val STOP_POLL_MS = 200L
         private const val RESTORE_INCOMPLETE =
-            "не удалось вернуть прежнее подключение: файлы профиля вернулись не до конца"
+            "could not restore the previous connection: profile files not fully restored"
         private const val STOP_TIMEOUT =
-            "не удалось вернуть прежнее подключение: прежний туннель не остановился вовремя — включите защиту вручную"
+            "could not restore the previous connection: previous tunnel did not stop in time, turn protection on manually"
         private val START_LABELS = setOf(EngineApi.VPN_PERMISSION_REQUIRED, EngineApi.FOREGROUND_START_NOT_ALLOWED)
     }
 }

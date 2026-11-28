@@ -41,11 +41,11 @@ class IdentityRegistration(
     }
 
     /** Ядро работает — менять файлы профиля нельзя. Прежний туннель не тронут. */
-    class EngineStillRunning : IllegalStateException("туннель ещё работает — замена подключения отложена")
+    class EngineStillRunning : IllegalStateException("tunnel still running, connection swap postponed")
 
     /** Прежние файлы не вернулись — на диске ни прежняя, ни новая личность. */
     class RestoreFailed(cause: Throwable) :
-        IOException("не удалось вернуть прежнее подключение: ${cause.message}", cause)
+        IOException("could not restore the previous connection: ${cause.message}", cause)
 
     enum class Recovery { NONE, COMMITTED, RESTORED }
 
@@ -64,11 +64,11 @@ class IdentityRegistration(
         gate.close()
         try {
             if (gate.isEngineRunning()) {
-                log("замена подключения: ядро ещё работает, файлы не трогаем")
+                log("connection swap: engine still running, files untouched")
                 return Result.failure(EngineStillRunning())
             }
             try {
-                recover(swap, storedFingerprint)?.let { log("замена подключения: остатки прошлой попытки — $it") }
+                recover(swap, storedFingerprint)?.let { log("connection swap: leftovers of a previous attempt: $it") }
             } catch (e: Exception) {
                 return Result.failure(RestoreFailed(e))
             }
@@ -89,11 +89,11 @@ class IdentityRegistration(
         gate.close()
         try {
             if (gate.isEngineRunning()) {
-                log("остатки замены подключения: ядро ещё работает, файлы не трогаем")
+                log("swap leftovers: engine still running, files untouched")
                 return Result.failure(EngineStillRunning())
             }
             return try {
-                Result.success(recover(swap, storedFingerprint).also { log("остатки замены подключения — $it") })
+                Result.success(recover(swap, storedFingerprint).also { log("swap leftovers: $it") })
             } catch (e: Exception) {
                 Result.failure(RestoreFailed(e))
             }
@@ -110,12 +110,12 @@ class IdentityRegistration(
         gate.close()
         try {
             if (gate.isEngineRunning()) {
-                log("выход: ядро ещё работает, файлы не трогаем")
+                log("sign out: engine still running, files untouched")
                 return Result.failure(EngineStillRunning())
             }
             return try {
                 swap.wipe()
-                log("выход: файлы профиля стёрты")
+                log("sign out: profile files erased")
                 Result.success(Unit)
             } catch (e: IOException) {
                 Result.failure(e)
@@ -133,7 +133,7 @@ class IdentityRegistration(
         var remembered = false
         val failure: Exception = try {
             swap.stash(newFingerprint)
-            log("замена подключения: прежние файлы отложены, вход с новой личностью")
+            log("connection swap: previous files set aside, signing in with a new identity")
             val error = login()
             if (error == null) {
                 withContext(NonCancellable) {
@@ -160,10 +160,10 @@ class IdentityRegistration(
     /** `null` — прежние файлы на месте; иначе [RestoreFailed]. */
     private fun rollBack(): RestoreFailed? = try {
         swap.restore()
-        log("замена подключения: прежняя личность устройства возвращена")
+        log("connection swap: previous device identity restored")
         null
     } catch (e: Exception) {
-        log("замена подключения: прежние файлы не вернулись: ${e.message}")
+        log("connection swap: previous files not restored: ${e.message}")
         RestoreFailed(e)
     }
 
@@ -175,7 +175,7 @@ class IdentityRegistration(
         try {
             swap.commit()
         } catch (e: Exception) {
-            log("замена подключения: копии прежних файлов не удалены (${e.message}), доделает следующий старт")
+            log("connection swap: copies of previous files not deleted (${e.message}), next start will finish")
         }
     }
 

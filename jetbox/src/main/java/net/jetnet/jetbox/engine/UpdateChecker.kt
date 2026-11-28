@@ -144,7 +144,7 @@ class UpdateChecker(
             }
             val info = body?.let { UpdateInfo.parse(it) }
             if (info == null) {
-                Log.i(TAG, "JetBox: обновлений не узнали — молчим")
+                Log.i(TAG, "JetBox: update check failed, staying quiet")
                 return
             }
             withContext(io) { kv.putString(K_INFO, info.toJson()) }

@@ -513,9 +513,9 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
                 setManagementURL(previousURL)
                 commit()
             }
-            Log.i(TAG, "register: адрес сервера возвращён на прежний")
+            Log.i(TAG, "register: server address restored to the previous one")
         } catch (e: Exception) {
-            Log.w(TAG, "register: не удалось вернуть прежний адрес сервера: ${e.message}")
+            Log.w(TAG, "register: could not restore the previous server address: ${e.message}")
         }
     }
 
@@ -722,30 +722,30 @@ class AndroidEngine private constructor(context: Context) : EngineApi {
         fun recoverIdentityFiles(context: Context) {
             if (VPNService.isIdentitySwapInProgress()) return
             if (instance?.binder?.isRunning == true) {
-                Log.i(TAG, "остатки замены личности: ядро работает, разбор отложен до регистрации")
+                Log.i(TAG, "identity swap leftovers: engine running, cleanup postponed until registration")
                 return
             }
             val pending = try {
                 ProfileFilesSwap.findPending(context.filesDir)
             } catch (e: Exception) {
-                Log.w(TAG, "не удалось найти остатки замены личности: ${e.message}")
+                Log.w(TAG, "could not look for identity swap leftovers: ${e.message}")
                 return
             }
             if (pending.isEmpty()) return
             val stored = try {
                 JetBoxStore(JetBoxProcess.prefs(context)).currentBox?.setupKeyFingerprint
             } catch (e: Exception) {
-                Log.w(TAG, "остатки замены личности: хранилище не прочитано: ${e.message}")
+                Log.w(TAG, "identity swap leftovers: store unreadable: ${e.message}")
                 return
             }
             for (p in pending) {
                 try {
                     val swap = ProfileFilesSwap.fromPending(p) { Log.w(TAG, it) }
                     val outcome = IdentityRegistration.recover(swap, stored)
-                    Log.i(TAG, "остатки оборванной замены личности (${p.name}): $outcome")
+                    Log.i(TAG, "leftovers of an interrupted identity swap (${p.name}): $outcome")
                 } catch (e: Exception) {
                     // Остатки этой метки остаются; следующая регистрация начнёт с их разбора.
-                    Log.w(TAG, "не удалось разобрать остатки замены личности (${p.name}): ${e.message}")
+                    Log.w(TAG, "could not clean up identity swap leftovers (${p.name}): ${e.message}")
                 }
             }
         }
